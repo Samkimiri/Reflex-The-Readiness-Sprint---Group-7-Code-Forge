@@ -1,0 +1,185 @@
+const express = require("express");
+const crypto = require("crypto");
+const QRCode = require("qrcode");
+const {
+  createDelivery,
+  getDeliveryById,
+  listDeliveries,
+  saveDelivery,
+  addStatusLog,
+  getStatusLog,
+  findUserById,
+} = require("../db");
+const { canTransition, assertRole, httpError } = require("../statusMachine");
+
+const router = express.Router();
+
+// POST /api/deliveries  (retailer creates a request)
+router.post("/", (req, res) => {
+  if (req.user.role !== "retailer") return res.status(403).json({ error: "Only a retailer can log a delivery request." });
+
+  const { customer_name, customer_phone, address, item_description } = req.body || {};
+  if (!customer_name || !customer_phone || !address || !item_description) {
+    return res.status(400).json({ error: "customer_name, customer_phone, address, and item_description are all required." });
+  }
+
+  const qr_code = crypto.randomBytes(16).toString("hex"); // opaque token — no PII encoded
+  const delivery = createDelivery({
+    retailer_id: req.user.id,
+    customer_name,
+    customer_phone,
+    address,
+    item_description,
+    qr_code,
+  });
+  addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status: null, new_status: "requested" });
+
+  res.status(201).json(withView(delivery, req.user));
+});
+
+// GET /api/deliveries?status=&rider_id=me&retailer_id=me
+router.get("/", (req, res) => {
+  const filter = {};
+  if (req.query.status) filter.status = req.query.status;
+  if (req.query.rider_id) filter.rider_id = req.query.rider_id === "me" ? req.user.id : req.query.rider_id;
+  if (req.query.retailer_id) filter.retailer_id = req.query.retailer_id === "me" ? req.user.id : req.query.retailer_id;
+
+  // Role-scoped visibility, even if a filter wasn't explicitly passed
+  if (req.user.role === "retailer" && !filter.retailer_id) filter.retailer_id = req.user.id;
+  if (req.user.role === "rider" && !filter.rider_id && req.query.rider_id !== "unassigned") filter.rider_id = req.user.id;
+
+  let deliveries = listDeliveries(filter);
+  deliveries = deliveries
+    .slice()
+    .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
+    .map((d) => withView(d, req.user));
+
+  res.json(deliveries);
+});
+
+// GET /api/deliveries/:id  (full detail + status history)
+router.get("/:id", (req, res) => {
+  const delivery = getDeliveryById(req.params.id);
+  if (!delivery) return res.status(404).json({ error: "Delivery not found." });
+
+  const history = getStatusLog(delivery.id).map((h) => ({
+    ...h,
+    changed_by_name: (findUserById(h.changed_by) || {}).name || "Unknown",
+  }));
+
+  res.json({ ...withView(delivery, req.user), history });
+});
+
+// PATCH /api/deliveries/:id/assign   (dispatcher)  { rider_id }
+router.patch("/:id/assign", (req, res, next) => {
+  try {
+    const delivery = getDeliveryById(req.params.id);
+    if (!delivery) return res.status(404).json({ error: "Delivery not found." });
+
+    assertRole("assign", req.user, delivery);
+    if (!canTransition(delivery.status, "assigned")) {
+      throw httpError(400, `Cannot assign a delivery that is currently '${delivery.status}'.`);
+    }
+
+    const { rider_id } = req.body || {};
+    if (!rider_id) return res.status(400).json({ error: "rider_id is required." });
+    const rider = findUserById(rider_id);
+    if (!rider || rider.role !== "rider") return res.status(400).json({ error: "rider_id must belong to a rider." });
+
+    // Atomic-in-spirit: re-check status hasn't moved before writing (single-process JSON store
+    // makes this effectively atomic; a real DB would use `UPDATE ... WHERE status='requested'`).
+    const fresh = getDeliveryById(delivery.id);
+    if (fresh.status !== "requested") {
+      return res.status(409).json({ error: "This delivery was already assigned by someone else." });
+    }
+
+    const old_status = fresh.status;
+    fresh.status = "assigned";
+    fresh.rider_id = Number(rider_id);
+    saveDelivery(fresh);
+    addStatusLog({ delivery_id: fresh.id, changed_by: req.user.id, old_status, new_status: "assigned" });
+
+    res.json(withView(fresh, req.user));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// PATCH /api/deliveries/:id/status   { new_status }  — pick_up and cancel go through here
+router.patch("/:id/status", (req, res, next) => {
+  try {
+    const delivery = getDeliveryById(req.params.id);
+    if (!delivery) return res.status(404).json({ error: "Delivery not found." });
+
+    const { new_status } = req.body || {};
+    if (!new_status) return res.status(400).json({ error: "new_status is required." });
+
+    if (new_status === "delivered") {
+      throw httpError(400, "Use POST /api/deliveries/:id/scan to confirm delivery — it requires the QR token.");
+    }
+
+    const action = new_status === "picked_up" ? "pick_up" : new_status === "cancelled" ? "cancel" : null;
+    if (!action) throw httpError(400, `Unsupported transition to '${new_status}'.`);
+
+    assertRole(action, req.user, delivery);
+    if (!canTransition(delivery.status, new_status)) {
+      throw httpError(400, `Cannot move from '${delivery.status}' to '${new_status}'.`);
+    }
+
+    const old_status = delivery.status;
+    delivery.status = new_status;
+    saveDelivery(delivery);
+    addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status, new_status });
+
+    res.json(withView(delivery, req.user));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// POST /api/deliveries/:id/scan   { qr_code }  — rider confirms drop-off
+router.post("/:id/scan", (req, res, next) => {
+  try {
+    const delivery = getDeliveryById(req.params.id);
+    if (!delivery) return res.status(404).json({ error: "Delivery not found." });
+
+    assertRole("deliver", req.user, delivery);
+
+    const { qr_code } = req.body || {};
+    if (!qr_code) return res.status(400).json({ error: "qr_code is required." });
+    if (qr_code !== delivery.qr_code) {
+      throw httpError(400, "QR code doesn't match this delivery.");
+    }
+    if (!canTransition(delivery.status, "delivered")) {
+      throw httpError(400, `Cannot confirm delivery — status is currently '${delivery.status}', expected 'picked_up'.`);
+    }
+
+    const old_status = delivery.status;
+    delivery.status = "delivered";
+    saveDelivery(delivery);
+    addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status, new_status: "delivered" });
+
+    res.json(withView(delivery, req.user));
+  } catch (e) {
+    next(e);
+  }
+});
+
+// GET /api/deliveries/:id/qrcode.png  — the QR image the retailer displays/prints
+router.get("/:id/qrcode.png", async (req, res) => {
+  const delivery = getDeliveryById(req.params.id);
+  if (!delivery) return res.status(404).end();
+  res.setHeader("Content-Type", "image/png");
+  QRCode.toFileStream(res, delivery.qr_code, { width: 300, margin: 1 });
+});
+
+// Shape returned to clients — retailers/dispatchers/riders all see the same
+// fields; only the raw qr_code stays out of list views to keep it out of casual reach.
+function withView(delivery, requestingUser) {
+  const base = { ...delivery };
+  const canSeeToken = requestingUser.role === "retailer" && requestingUser.id === delivery.retailer_id;
+  if (!canSeeToken) delete base.qr_code;
+  return base;
+}
+
+module.exports = router;

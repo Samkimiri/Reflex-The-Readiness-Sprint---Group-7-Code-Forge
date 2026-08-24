@@ -1,0 +1,52 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Reflex — Delivery Coordination</title>
+<link rel="stylesheet" href="style.css" />
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+</head>
+<body>
+
+<div id="login-screen" class="screen">
+  <div class="login-card">
+    <h1>REFLEX</h1>
+    <p class="tagline">Delivery coordination for Kenyan retailers</p>
+
+    <form id="login-form">
+      <label>Phone</label>
+      <input type="text" id="login-phone" placeholder="0700000001" required />
+      <label>Password</label>
+      <input type="password" id="login-password" placeholder="••••••••" required />
+      <button type="submit">Log in</button>
+      <p id="login-error" class="error"></p>
+    </form>
+
+    <div class="demo-accounts">
+      <p class="demo-title">Demo accounts</p>
+      <button class="demo-btn" data-phone="0700000001" data-pass="retailer123">Retailer — 0700000001 / retailer123</button>
+      <button class="demo-btn" data-phone="0700000002" data-pass="dispatch123">Dispatcher — 0700000002 / dispatch123</button>
+      <button class="demo-btn" data-phone="0700000003" data-pass="rider123">Rider — 0700000003 / rider123</button>
+    </div>
+  </div>
+</div>
+
+<div id="app-screen" class="screen hidden">
+  <header class="topbar">
+    <div class="brand">REFLEX</div>
+    <div class="who">
+      <span id="who-name"></span>
+      <span id="who-role" class="role-badge"></span>
+      <button id="logout-btn" class="link-btn">Log out</button>
+    </div>
+  </header>
+
+  <main id="view-root"></main>
+</div>
+
+<div id="toast" class="toast hidden"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
