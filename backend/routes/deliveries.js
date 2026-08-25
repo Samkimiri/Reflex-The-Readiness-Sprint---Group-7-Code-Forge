@@ -15,7 +15,7 @@ const { canTransition, assertRole, httpError } = require("../statusMachine");
 const router = express.Router();
 
 // POST /api/deliveries  (retailer creates a request)
-router.post("/", (req, res) => {
+router.post("/", async (req, res) => {
   if (req.user.role !== "retailer") return res.status(403).json({ error: "Only a retailer can log a delivery request." });
 
   const { customer_name, customer_phone, address, item_description } = req.body || {};
@@ -24,7 +24,7 @@ router.post("/", (req, res) => {
   }
 
   const qr_code = crypto.randomBytes(16).toString("hex"); // opaque token — no PII encoded
-  const delivery = createDelivery({
+  const delivery = await createDelivery({
     retailer_id: req.user.id,
     customer_name,
     customer_phone,
@@ -32,13 +32,13 @@ router.post("/", (req, res) => {
     item_description,
     qr_code,
   });
-  addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status: null, new_status: "requested" });
+  await addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status: null, new_status: "requested" });
 
   res.status(201).json(withView(delivery, req.user));
 });
 
 // GET /api/deliveries?status=&rider_id=me&retailer_id=me
-router.get("/", (req, res) => {
+router.get("/", async (req, res) => {
   const filter = {};
   if (req.query.status) filter.status = req.query.status;
   if (req.query.rider_id) filter.rider_id = req.query.rider_id === "me" ? req.user.id : req.query.rider_id;
@@ -48,7 +48,7 @@ router.get("/", (req, res) => {
   if (req.user.role === "retailer" && !filter.retailer_id) filter.retailer_id = req.user.id;
   if (req.user.role === "rider" && !filter.rider_id && req.query.rider_id !== "unassigned") filter.rider_id = req.user.id;
 
-  let deliveries = listDeliveries(filter);
+  let deliveries = await listDeliveries(filter);
   deliveries = deliveries
     .slice()
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
@@ -58,22 +58,25 @@ router.get("/", (req, res) => {
 });
 
 // GET /api/deliveries/:id  (full detail + status history)
-router.get("/:id", (req, res) => {
-  const delivery = getDeliveryById(req.params.id);
+router.get("/:id", async (req, res) => {
+  const delivery = await getDeliveryById(req.params.id);
   if (!delivery) return res.status(404).json({ error: "Delivery not found." });
 
-  const history = getStatusLog(delivery.id).map((h) => ({
-    ...h,
-    changed_by_name: (findUserById(h.changed_by) || {}).name || "Unknown",
-  }));
+  const rawHistory = await getStatusLog(delivery.id);
+  const history = await Promise.all(
+    rawHistory.map(async (h) => ({
+      ...h,
+      changed_by_name: (await findUserById(h.changed_by))?.name || "Unknown",
+    }))
+  );
 
   res.json({ ...withView(delivery, req.user), history });
 });
 
 // PATCH /api/deliveries/:id/assign   (dispatcher)  { rider_id }
-router.patch("/:id/assign", (req, res, next) => {
+router.patch("/:id/assign", async (req, res, next) => {
   try {
-    const delivery = getDeliveryById(req.params.id);
+    const delivery = await getDeliveryById(req.params.id);
     if (!delivery) return res.status(404).json({ error: "Delivery not found." });
 
     assertRole("assign", req.user, delivery);
@@ -83,12 +86,12 @@ router.patch("/:id/assign", (req, res, next) => {
 
     const { rider_id } = req.body || {};
     if (!rider_id) return res.status(400).json({ error: "rider_id is required." });
-    const rider = findUserById(rider_id);
+    const rider = await findUserById(rider_id);
     if (!rider || rider.role !== "rider") return res.status(400).json({ error: "rider_id must belong to a rider." });
 
     // Atomic-in-spirit: re-check status hasn't moved before writing (single-process JSON store
     // makes this effectively atomic; a real DB would use `UPDATE ... WHERE status='requested'`).
-    const fresh = getDeliveryById(delivery.id);
+    const fresh = await getDeliveryById(delivery.id);
     if (fresh.status !== "requested") {
       return res.status(409).json({ error: "This delivery was already assigned by someone else." });
     }
@@ -96,8 +99,8 @@ router.patch("/:id/assign", (req, res, next) => {
     const old_status = fresh.status;
     fresh.status = "assigned";
     fresh.rider_id = Number(rider_id);
-    saveDelivery(fresh);
-    addStatusLog({ delivery_id: fresh.id, changed_by: req.user.id, old_status, new_status: "assigned" });
+    await saveDelivery(fresh);
+    await addStatusLog({ delivery_id: fresh.id, changed_by: req.user.id, old_status, new_status: "assigned" });
 
     res.json(withView(fresh, req.user));
   } catch (e) {
@@ -106,9 +109,9 @@ router.patch("/:id/assign", (req, res, next) => {
 });
 
 // PATCH /api/deliveries/:id/status   { new_status }  — pick_up and cancel go through here
-router.patch("/:id/status", (req, res, next) => {
+router.patch("/:id/status", async (req, res, next) => {
   try {
-    const delivery = getDeliveryById(req.params.id);
+    const delivery = await getDeliveryById(req.params.id);
     if (!delivery) return res.status(404).json({ error: "Delivery not found." });
 
     const { new_status } = req.body || {};
@@ -128,8 +131,8 @@ router.patch("/:id/status", (req, res, next) => {
 
     const old_status = delivery.status;
     delivery.status = new_status;
-    saveDelivery(delivery);
-    addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status, new_status });
+    await saveDelivery(delivery);
+    await addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status, new_status });
 
     res.json(withView(delivery, req.user));
   } catch (e) {
@@ -138,9 +141,9 @@ router.patch("/:id/status", (req, res, next) => {
 });
 
 // POST /api/deliveries/:id/scan   { qr_code }  — rider confirms drop-off
-router.post("/:id/scan", (req, res, next) => {
+router.post("/:id/scan", async (req, res, next) => {
   try {
-    const delivery = getDeliveryById(req.params.id);
+    const delivery = await getDeliveryById(req.params.id);
     if (!delivery) return res.status(404).json({ error: "Delivery not found." });
 
     assertRole("deliver", req.user, delivery);
@@ -156,8 +159,8 @@ router.post("/:id/scan", (req, res, next) => {
 
     const old_status = delivery.status;
     delivery.status = "delivered";
-    saveDelivery(delivery);
-    addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status, new_status: "delivered" });
+    await saveDelivery(delivery);
+    await addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status, new_status: "delivered" });
 
     res.json(withView(delivery, req.user));
   } catch (e) {
@@ -167,7 +170,7 @@ router.post("/:id/scan", (req, res, next) => {
 
 // GET /api/deliveries/:id/qrcode.png  — the QR image the retailer displays/prints
 router.get("/:id/qrcode.png", async (req, res) => {
-  const delivery = getDeliveryById(req.params.id);
+  const delivery = await getDeliveryById(req.params.id);
   if (!delivery) return res.status(404).end();
   res.setHeader("Content-Type", "image/png");
   QRCode.toFileStream(res, delivery.qr_code, { width: 300, margin: 1 });

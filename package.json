@@ -1,0 +1,6 @@
+{
+  "name": "reflex-readiness-sprint",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Vercel deployment root — actual dependencies live in backend/package.json (see vercel.json installCommand)."
+}

@@ -8,11 +8,16 @@ const deliveryRoutes = require("./routes/deliveries");
 const userRoutes = require("./routes/users");
 const { seed } = require("./seed");
 
-seed();
-
 const app = express();
 app.use(cors());
 app.use(express.json());
+
+// Gate every request behind seeding once — cheap after the first request,
+// and avoids a cold-start race between seeding and the first API call.
+const seeded = seed().catch((err) => console.error("Seed failed:", err));
+app.use((req, res, next) => {
+  seeded.then(() => next());
+});
 
 app.use("/api/auth", authRoutes);
 app.use("/api/deliveries", requireAuth, deliveryRoutes);
@@ -29,6 +34,10 @@ app.use((err, req, res, next) => {
 });
 
 const PORT = process.env.PORT || 4000;
-app.listen(PORT, () => {
-  console.log(`\nReflex API + app running at http://localhost:${PORT}\n`);
-});
+if (require.main === module) {
+  app.listen(PORT, () => {
+    console.log(`\nReflex API + app running at http://localhost:${PORT}\n`);
+  });
+}
+
+module.exports = app;

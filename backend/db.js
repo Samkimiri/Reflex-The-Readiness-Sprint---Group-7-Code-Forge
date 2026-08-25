@@ -1,31 +1,61 @@
-// Lightweight JSON-file data store.
+// Data store.
 //
-// This stands in for the PostgreSQL database described in the architecture
-// deck so the app runs anywhere with zero setup (no DB server to install).
-// The shape mirrors the real schema exactly:
+// On Vercel, the filesystem is read-only/ephemeral, so this uses Upstash
+// Redis (via the Vercel Marketplace Redis integration) when
+// KV_REST_API_URL / KV_REST_API_TOKEN are present. Locally (npm start with
+// no KV env vars) it falls back to a JSON file, so the app still runs
+// anywhere with zero setup — no DB server to install.
+//
+// The shape mirrors the real schema from the architecture deck exactly:
 //   users        -> id, name, phone, password_hash, role, created_at
 //   deliveries   -> id, retailer_id, rider_id, customer_name, customer_phone,
 //                   address, item_description, status, qr_code, created_at, updated_at
 //   status_log   -> id, delivery_id, changed_by, old_status, new_status, changed_at
 //
-// Swapping this for real Postgres later means replacing the functions below
-// with SQL queries — the rest of the app (routes, state machine) doesn't change.
+// Swapping this for real Postgres later means replacing readDB/writeDB (and
+// the KV key) with SQL queries — the rest of the app (routes, state machine)
+// doesn't change.
 
 const fs = require("fs");
+const os = require("os");
 const path = require("path");
 
-const DB_FILE = path.join(__dirname, "data", "db.json");
+let kv = null;
+if (process.env.KV_REST_API_URL && process.env.KV_REST_API_TOKEN) {
+  const { Redis } = require("@upstash/redis");
+  kv = Redis.fromEnv();
+}
 
-function readDB() {
+// On Vercel the deployed bundle itself is read-only — only os.tmpdir() is
+// writable there (and ephemeral/per-instance). Locally, keep using
+// backend/data so a restart doesn't lose the demo data.
+const DB_FILE = process.env.VERCEL
+  ? path.join(os.tmpdir(), "reflex-db.json")
+  : path.join(__dirname, "data", "db.json");
+const KV_KEY = "reflex_db";
+
+function emptyDB() {
+  return { users: [], deliveries: [], status_log: [], seq: { users: 0, deliveries: 0, status_log: 0 } };
+}
+
+async function readDB() {
+  if (kv) {
+    const data = await kv.get(KV_KEY);
+    return data || emptyDB();
+  }
   if (!fs.existsSync(DB_FILE)) {
-    const empty = { users: [], deliveries: [], status_log: [], seq: { users: 0, deliveries: 0, status_log: 0 } };
+    const empty = emptyDB();
     fs.writeFileSync(DB_FILE, JSON.stringify(empty, null, 2));
     return empty;
   }
   return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
 }
 
-function writeDB(data) {
+async function writeDB(data) {
+  if (kv) {
+    await kv.set(KV_KEY, data);
+    return;
+  }
   fs.writeFileSync(DB_FILE, JSON.stringify(data, null, 2));
 }
 
@@ -35,27 +65,27 @@ function nextId(db, table) {
 }
 
 // ---------- users ----------
-function findUserByPhone(phone) {
-  const db = readDB();
+async function findUserByPhone(phone) {
+  const db = await readDB();
   return db.users.find((u) => u.phone === phone) || null;
 }
 
-function findUserById(id) {
-  const db = readDB();
-  return db.users.find((u) => u.id === id) || null;
+async function findUserById(id) {
+  const db = await readDB();
+  return db.users.find((u) => u.id === Number(id)) || null;
 }
 
-function createUser({ name, phone, password_hash, role }) {
-  const db = readDB();
+async function createUser({ name, phone, password_hash, role }) {
+  const db = await readDB();
   const user = { id: nextId(db, "users"), name, phone, password_hash, role, created_at: new Date().toISOString() };
   db.users.push(user);
-  writeDB(db);
+  await writeDB(db);
   return user;
 }
 
 // ---------- deliveries ----------
-function createDelivery({ retailer_id, customer_name, customer_phone, address, item_description, qr_code }) {
-  const db = readDB();
+async function createDelivery({ retailer_id, customer_name, customer_phone, address, item_description, qr_code }) {
+  const db = await readDB();
   const now = new Date().toISOString();
   const delivery = {
     id: nextId(db, "deliveries"),
@@ -71,17 +101,17 @@ function createDelivery({ retailer_id, customer_name, customer_phone, address, i
     updated_at: now,
   };
   db.deliveries.push(delivery);
-  writeDB(db);
+  await writeDB(db);
   return delivery;
 }
 
-function getDeliveryById(id) {
-  const db = readDB();
+async function getDeliveryById(id) {
+  const db = await readDB();
   return db.deliveries.find((d) => d.id === Number(id)) || null;
 }
 
-function listDeliveries({ status, rider_id, retailer_id } = {}) {
-  const db = readDB();
+async function listDeliveries({ status, rider_id, retailer_id } = {}) {
+  const db = await readDB();
   return db.deliveries.filter((d) => {
     if (status && d.status !== status) return false;
     if (rider_id && d.rider_id !== Number(rider_id)) return false;
@@ -90,19 +120,19 @@ function listDeliveries({ status, rider_id, retailer_id } = {}) {
   });
 }
 
-function saveDelivery(updated) {
-  const db = readDB();
+async function saveDelivery(updated) {
+  const db = await readDB();
   const idx = db.deliveries.findIndex((d) => d.id === updated.id);
   if (idx === -1) return null;
   updated.updated_at = new Date().toISOString();
   db.deliveries[idx] = updated;
-  writeDB(db);
+  await writeDB(db);
   return updated;
 }
 
 // ---------- status_log ----------
-function addStatusLog({ delivery_id, changed_by, old_status, new_status }) {
-  const db = readDB();
+async function addStatusLog({ delivery_id, changed_by, old_status, new_status }) {
+  const db = await readDB();
   const entry = {
     id: nextId(db, "status_log"),
     delivery_id,
@@ -112,12 +142,12 @@ function addStatusLog({ delivery_id, changed_by, old_status, new_status }) {
     changed_at: new Date().toISOString(),
   };
   db.status_log.push(entry);
-  writeDB(db);
+  await writeDB(db);
   return entry;
 }
 
-function getStatusLog(delivery_id) {
-  const db = readDB();
+async function getStatusLog(delivery_id) {
+  const db = await readDB();
   return db.status_log
     .filter((s) => s.delivery_id === Number(delivery_id))
     .sort((a, b) => new Date(a.changed_at) - new Date(b.changed_at));

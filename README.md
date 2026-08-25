@@ -85,3 +85,32 @@ frontend/
 
 Delete `backend/data/db.json` and restart the server — it reseeds the three
 demo accounts automatically.
+
+## Deploying to Vercel
+
+The app deploys as a single Vercel project: `api/index.js` wraps the Express
+app from `backend/server.js` as a serverless function, and `vercel.json`
+rewrites every request to it (so both the REST API and the static frontend
+are served from the same place, just like local dev).
+
+**Data storage on Vercel:** serverless functions have a read-only, ephemeral
+filesystem, so the JSON-file store (`backend/data/db.json`) that's used
+locally can't persist there. `backend/db.js` automatically switches to
+Upstash Redis when `KV_REST_API_URL` / `KV_REST_API_TOKEN` are present in the
+environment, keeping the exact same data shape. To enable it:
+
+1. Deploy the project to Vercel (import the repo, or `vercel --prod`).
+2. In the Vercel dashboard, go to **Storage → Marketplace Database
+   Integrations** and add a **Redis** integration (Upstash), connecting it to
+   this project. Vercel sets `KV_REST_API_URL` and `KV_REST_API_TOKEN`
+   automatically.
+3. Also set a `JWT_SECRET` environment variable (any random string) — the
+   code falls back to a hardcoded dev secret otherwise, which is fine
+   locally but not for a real deployment.
+4. Redeploy so the new environment variables take effect. First request
+   after that seeds the three demo accounts into Redis, same as local dev.
+
+Without the Redis integration connected, the app still deploys and runs, but
+falls back to writing `db.json` inside the function's `/tmp` — data won't be
+shared across function instances and can reset at any time. Fine for a quick
+look, not for a live multi-role demo.
