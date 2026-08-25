@@ -306,17 +306,35 @@ function openModal(html) {
 }
 function closeModal(backdrop) {
   stopScanner();
+  const img = backdrop.querySelector(".qr-img");
+  if (img && img.dataset.blobUrl) URL.revokeObjectURL(img.dataset.blobUrl);
   backdrop.remove();
 }
 
-function openQrModal(id) {
+async function openQrModal(id) {
   const modal = openModal(`
     <button class="modal-close" data-close>&times;</button>
     <h3>Delivery QR Code</h3>
     <p style="font-size:13px;color:var(--muted)">Show this to the rider at drop-off. It's what turns "delivered" from a claim into proof.</p>
-    <img class="qr-img" src="/api/deliveries/${id}/qrcode.png" width="220" height="220" />
+    <img class="qr-img" width="220" height="220" alt="Delivery QR code" />
   `);
   modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
+
+  // A plain <img src> can't carry the Authorization header the API requires,
+  // so fetch it authenticated and render the result as a blob URL instead.
+  try {
+    const res = await fetch(API + `/deliveries/${id}/qrcode.png`, {
+      headers: { Authorization: "Bearer " + state.token },
+    });
+    if (!res.ok) throw new Error("Could not load QR code.");
+    const blobUrl = URL.createObjectURL(await res.blob());
+    const img = modal.querySelector(".qr-img");
+    if (!img) { URL.revokeObjectURL(blobUrl); return; } // modal closed before fetch resolved
+    img.src = blobUrl;
+    img.dataset.blobUrl = blobUrl;
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
 
 async function openHistoryModal(id) {
