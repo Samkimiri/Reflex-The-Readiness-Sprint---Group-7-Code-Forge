@@ -16,6 +16,17 @@ async function api(path, { method = "GET", body } = {}) {
   return data;
 }
 
+function waitFor(check, timeoutMs) {
+  return new Promise((resolve) => {
+    const start = Date.now();
+    (function poll() {
+      if (check()) return resolve(true);
+      if (Date.now() - start > timeoutMs) return resolve(false);
+      setTimeout(poll, 100);
+    })();
+  });
+}
+
 function toast(msg, isError = false) {
   const el = document.getElementById("toast");
   el.textContent = msg;
@@ -50,6 +61,123 @@ async function doLogin(phone, password) {
   } catch (e) {
     errEl.textContent = e.message;
   }
+}
+
+// ---------- Register ----------
+document.getElementById("show-register-btn").addEventListener("click", () => setAuthMode("register"));
+document.getElementById("show-login-btn").addEventListener("click", () => setAuthMode("login"));
+
+function setAuthMode(mode) {
+  const isRegister = mode === "register";
+  document.getElementById("login-form").classList.toggle("hidden", isRegister);
+  document.getElementById("register-form").classList.toggle("hidden", !isRegister);
+  document.getElementById("switch-to-register").classList.toggle("hidden", isRegister);
+  document.getElementById("switch-to-login").classList.toggle("hidden", !isRegister);
+  document.getElementById("demo-accounts").classList.toggle("hidden", isRegister);
+  document.getElementById("auth-tagline").textContent = isRegister
+    ? "Create your account"
+    : "Delivery coordination for Kenyan retailers";
+  document.getElementById("login-error").textContent = "";
+  document.getElementById("register-error").textContent = "";
+}
+
+document.getElementById("register-form").addEventListener("submit", async (e) => {
+  e.preventDefault();
+  const errEl = document.getElementById("register-error");
+  errEl.textContent = "";
+  const fd = new FormData(e.target);
+  const body = Object.fromEntries(fd);
+  if (!body.email) delete body.email;
+  try {
+    const { token, user } = await api("/auth/register", { method: "POST", body });
+    state.token = token;
+    state.user = user;
+    localStorage.setItem("reflex_token", token);
+    localStorage.setItem("reflex_user", JSON.stringify(user));
+    enterApp();
+  } catch (e) {
+    errEl.textContent = e.message;
+  }
+});
+
+// ---------- Google sign-in ----------
+// Google's ID token proves *who* someone is, not *which role* they hold in
+// this app — a brand-new Google account has to pick a role once before an
+// account can be created for it.
+let pendingGoogleCredential = null;
+
+(async function initGoogleSignIn() {
+  let googleClientId = null;
+  try {
+    ({ googleClientId } = await api("/auth/config"));
+  } catch (e) {
+    return; // no config endpoint reachable yet — leave the button hidden
+  }
+  if (!googleClientId) return;
+
+  // accounts.google.com/gsi/client loads with `async`, so it can still be
+  // in flight once this runs — give it a few seconds to show up.
+  const gsiReady = await waitFor(() => window.google && window.google.accounts && window.google.accounts.id, 5000);
+  if (!gsiReady) return;
+
+  window.google.accounts.id.initialize({ client_id: googleClientId, callback: handleGoogleCredential });
+  document.getElementById("google-btn-wrap").classList.remove("hidden");
+  window.google.accounts.id.renderButton(document.getElementById("google-btn"), {
+    theme: "outline",
+    size: "large",
+    width: 268,
+  });
+})();
+
+async function handleGoogleCredential(response) {
+  pendingGoogleCredential = response.credential;
+  await submitGoogleCredential();
+}
+
+async function submitGoogleCredential(role) {
+  try {
+    const result = await api("/auth/google", { method: "POST", body: { credential: pendingGoogleCredential, role } });
+    if (result.needsRole) {
+      openGoogleRolePicker();
+      return;
+    }
+    pendingGoogleCredential = null;
+    state.token = result.token;
+    state.user = result.user;
+    localStorage.setItem("reflex_token", result.token);
+    localStorage.setItem("reflex_user", JSON.stringify(result.user));
+    enterApp();
+  } catch (e) {
+    toast(e.message, true);
+  }
+}
+
+function openGoogleRolePicker() {
+  const modal = openModal(`
+    <button class="modal-close" data-close>&times;</button>
+    <h3>One more thing</h3>
+    <p style="font-size:13px;color:var(--muted)">Google doesn't tell us your role here — pick the one that's you.</p>
+    <div class="form-grid">
+      <div class="full">
+        <label>I am a...</label>
+        <select id="google-role-select">
+          <option value="retailer">Retailer</option>
+          <option value="dispatcher">Dispatcher</option>
+          <option value="rider">Rider</option>
+        </select>
+      </div>
+      <div class="full"><button class="btn btn-primary" id="google-role-submit" type="button">Finish creating account</button></div>
+    </div>
+  `);
+  modal.querySelector("[data-close]").addEventListener("click", () => {
+    pendingGoogleCredential = null;
+    closeModal(modal);
+  });
+  modal.querySelector("#google-role-submit").addEventListener("click", async () => {
+    const role = modal.querySelector("#google-role-select").value;
+    closeModal(modal);
+    await submitGoogleCredential(role);
+  });
 }
 
 document.getElementById("logout-btn").addEventListener("click", () => {

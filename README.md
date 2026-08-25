@@ -27,6 +27,39 @@ On first run it seeds three demo accounts:
 Log in as each in a separate browser tab (or a normal + incognito window) to
 demo the full three-role flow at once.
 
+## Creating accounts
+
+Click **Create an account** on the login screen to self-register with a
+name, phone, password, and role (retailer/dispatcher/rider) — this calls the
+same `/api/auth/register` endpoint that seeds the demo accounts.
+
+### Google sign-in
+
+"Continue with Google" is available once `GOOGLE_CLIENT_ID` is set in the
+environment; the button stays hidden otherwise (no error, just absent). To
+enable it:
+
+1. In [Google Cloud Console](https://console.cloud.google.com/apis/credentials),
+   create an **OAuth client ID** of type **Web application**.
+2. Add every origin the app is actually served from to **Authorized
+   JavaScript origins** — e.g. `http://localhost:4000` for local dev and your
+   `https://your-app.vercel.app` domain for the deployed site. (No redirect
+   URI needed — this uses Google Identity Services' token flow, not a
+   redirect.)
+3. Set `GOOGLE_CLIENT_ID` to that client ID, both locally (`.env`/shell) and
+   as a Vercel project environment variable, then restart/redeploy.
+
+The client ID isn't a secret (it's meant to ship in browser JS), but the ID
+**token** Google hands back is always verified server-side
+(`google-auth-library`) before any session is issued.
+
+Since Google only proves identity, not role, a brand-new Google sign-in is
+asked to pick retailer/dispatcher/rider once, right after authenticating,
+before its account is created. Signing in again after that just logs in —
+no repeat prompt. If the Google account's email matches an existing
+phone-registered account, that account is linked instead of creating a
+duplicate.
+
 ## Demoing the QR scan
 
 - As the **retailer**, click "Show QR" on a delivery once it's `picked_up`.
@@ -38,7 +71,8 @@ demo the full three-role flow at once.
 
 ## What's actually implemented
 
-- Full auth (register/login, JWT, bcrypt password hashing)
+- Full auth (self-service register/login, JWT, bcrypt password hashing,
+  optional Google sign-in)
 - All three role dashboards (Retailer, Dispatcher, Rider)
 - The exact status state machine from the architecture deck, enforced
   server-side with role checks on every transition

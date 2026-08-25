@@ -6,8 +6,10 @@
 // no KV env vars) it falls back to a JSON file, so the app still runs
 // anywhere with zero setup — no DB server to install.
 //
-// The shape mirrors the real schema from the architecture deck exactly:
-//   users        -> id, name, phone, password_hash, role, created_at
+// The shape mirrors the real schema from the architecture deck, extended
+// with email/google_id so an account can be created via Google sign-in
+// (which has no phone number) instead of just phone+password:
+//   users        -> id, name, phone, email, google_id, password_hash, role, created_at
 //   deliveries   -> id, retailer_id, rider_id, customer_name, customer_phone,
 //                   address, item_description, status, qr_code, created_at, updated_at
 //   status_log   -> id, delivery_id, changed_by, old_status, new_status, changed_at
@@ -70,17 +72,45 @@ async function findUserByPhone(phone) {
   return db.users.find((u) => u.phone === phone) || null;
 }
 
+async function findUserByEmail(email) {
+  const db = await readDB();
+  return db.users.find((u) => u.email && u.email === email) || null;
+}
+
+async function findUserByGoogleId(google_id) {
+  const db = await readDB();
+  return db.users.find((u) => u.google_id === google_id) || null;
+}
+
 async function findUserById(id) {
   const db = await readDB();
   return db.users.find((u) => u.id === Number(id)) || null;
 }
 
-async function createUser({ name, phone, password_hash, role }) {
+async function createUser({ name, phone = null, email = null, google_id = null, password_hash = null, role }) {
   const db = await readDB();
-  const user = { id: nextId(db, "users"), name, phone, password_hash, role, created_at: new Date().toISOString() };
+  const user = {
+    id: nextId(db, "users"),
+    name,
+    phone,
+    email,
+    google_id,
+    password_hash,
+    role,
+    created_at: new Date().toISOString(),
+  };
   db.users.push(user);
   await writeDB(db);
   return user;
+}
+
+async function saveUser(updated) {
+  const db = await readDB();
+  const idx = db.users.findIndex((u) => u.id === updated.id);
+  if (idx === -1) return null;
+  db.users[idx] = updated;
+  await writeDB(db);
+  return updated;
 }
 
 // ---------- deliveries ----------
@@ -156,8 +186,11 @@ async function getStatusLog(delivery_id) {
 module.exports = {
   readDB,
   findUserByPhone,
+  findUserByEmail,
+  findUserByGoogleId,
   findUserById,
   createUser,
+  saveUser,
   createDelivery,
   getDeliveryById,
   listDeliveries,

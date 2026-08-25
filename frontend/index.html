@@ -6,13 +6,19 @@
 <title>Reflex — Delivery Coordination</title>
 <link rel="stylesheet" href="style.css" />
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
 <div id="login-screen" class="screen">
   <div class="login-card">
     <h1>REFLEX</h1>
-    <p class="tagline">Delivery coordination for Kenyan retailers</p>
+    <p class="tagline" id="auth-tagline">Delivery coordination for Kenyan retailers</p>
+
+    <div id="google-btn-wrap" class="hidden">
+      <div id="google-btn"></div>
+      <div class="divider"><span>or</span></div>
+    </div>
 
     <form id="login-form">
       <label>Phone</label>
@@ -23,7 +29,32 @@
       <p id="login-error" class="error"></p>
     </form>
 
-    <div class="demo-accounts">
+    <form id="register-form" class="hidden">
+      <label>Full name</label>
+      <input type="text" name="name" required />
+      <label>Phone</label>
+      <input type="text" name="phone" required />
+      <label>Email (optional)</label>
+      <input type="email" name="email" />
+      <label>Password</label>
+      <input type="password" name="password" required minlength="6" />
+      <label>I am a...</label>
+      <select name="role" required>
+        <option value="" disabled selected>Select role</option>
+        <option value="retailer">Retailer</option>
+        <option value="dispatcher">Dispatcher</option>
+        <option value="rider">Rider</option>
+      </select>
+      <button type="submit">Create account</button>
+      <p id="register-error" class="error"></p>
+    </form>
+
+    <p class="switch-auth">
+      <span id="switch-to-register">New here? <button type="button" class="link-btn-inline" id="show-register-btn">Create an account</button></span>
+      <span id="switch-to-login" class="hidden">Already have an account? <button type="button" class="link-btn-inline" id="show-login-btn">Log in</button></span>
+    </p>
+
+    <div class="demo-accounts" id="demo-accounts">
       <p class="demo-title">Demo accounts</p>
       <button class="demo-btn" data-phone="0700000001" data-pass="retailer123">Retailer — 0700000001 / retailer123</button>
       <button class="demo-btn" data-phone="0700000002" data-pass="dispatch123">Dispatcher — 0700000002 / dispatch123</button>
