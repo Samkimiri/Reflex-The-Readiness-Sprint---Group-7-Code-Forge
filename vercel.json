@@ -1,4 +1,3 @@
 {
-  "installCommand": "npm install --prefix backend",
   "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }

@@ -9,7 +9,6 @@ code — not just the rider's word.
 Requires Node.js (v18+ recommended). No database to install.
 
 ```bash
-cd backend
 npm install
 npm start
 ```
@@ -66,9 +65,12 @@ demo the full three-role flow at once.
 ## Project structure
 
 ```
+package.json          dependencies + npm start (repo root — see below)
+vercel.json            routes every request to api/index.js on Vercel
+api/index.js            Vercel serverless entry point (wraps backend/server.js)
 backend/
   server.js          entry point — wires up routes, serves the frontend
-  db.js              data layer (JSON-file store)
+  db.js              data layer (JSON file locally / Upstash Redis on Vercel)
   statusMachine.js    the transition rules + role checks, in one place
   seed.js            demo account seeding
   middleware/auth.js  JWT verification
@@ -80,6 +82,9 @@ frontend/
   style.css
   app.js             all three role views + QR scan modal
 ```
+
+Dependencies live in a single root `package.json` (not one per folder) so
+both local dev and Vercel's build use one `npm install`.
 
 ## Resetting demo data
 
