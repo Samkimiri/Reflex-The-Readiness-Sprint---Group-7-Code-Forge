@@ -24,6 +24,13 @@ On first run it seeds three demo accounts:
 | Dispatcher | 0700000002  | dispatch123  |
 | Rider      | 0700000003  | rider123     |
 
+...and five example deliveries under the retailer account, one in each
+status (`requested`, `assigned`, `picked_up`, `delivered`, `cancelled`), so
+every dashboard has something to show instead of an empty state — the
+dispatcher has an open request to assign, the rider has one to pick up and
+one to scan-confirm, and the retailer's "History" shows a full audit trail
+on the delivered one.
+
 Log in as each in a separate browser tab (or a normal + incognito window) to
 demo the full three-role flow at once.
 
