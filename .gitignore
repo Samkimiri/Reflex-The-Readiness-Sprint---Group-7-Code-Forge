@@ -4,3 +4,4 @@ backend/data/db.json
 *.log
 
 .vercel
+.env*.local
