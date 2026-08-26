@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8" />
-<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
 <title>Reflex — Delivery Coordination</title>
 <link rel="stylesheet" href="style.css" />
 <link rel="manifest" href="manifest.json" />
@@ -18,12 +18,11 @@
 </head>
 <body>
 
-<button id="install-btn" class="install-btn hidden" type="button">⬇ Install app</button>
-
 <div id="login-screen" class="screen">
   <div class="login-card">
     <h1>REFLEX</h1>
     <p class="tagline" id="auth-tagline">Delivery coordination for Kenyan retailers</p>
+    <button type="button" id="install-link-login" class="link-btn-inline install-link hidden">📲 Install this app</button>
 
     <div id="google-btn-wrap" class="hidden">
       <div id="google-btn"></div>
@@ -83,6 +82,7 @@
   <header class="topbar">
     <div class="brand">REFLEX</div>
     <div class="who">
+      <button type="button" id="install-link-app" class="link-btn install-link hidden">📲 Install app</button>
       <span id="who-name"></span>
       <span id="who-role" class="role-badge"></span>
       <button id="logout-btn" class="link-btn">Log out</button>

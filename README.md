@@ -42,12 +42,16 @@ Reflex is an installable Progressive Web App — `manifest.json` + `sw.js`
 (service worker) turn it into something with its own icon, its own window
 (no browser chrome), and an app-shell that still opens when offline.
 
-- **Desktop Chrome/Edge**: an install icon appears in the address bar, or use
-  the green **Install app** button that shows up top-right once the browser
-  decides the page qualifies (needs HTTPS — works on the Vercel deployment;
-  `localhost` also counts as a secure context for this).
-- **Android Chrome**: "Add to Home screen" from the browser menu, or the same
-  install prompt.
+- **Desktop Chrome/Edge & Android Chrome**: once the browser decides the page
+  qualifies (needs HTTPS — works on the Vercel deployment; `localhost` also
+  counts as a secure context), Reflex shows an actual install prompt — a
+  dialog offering **Install** / **Not now**, not just a hard-to-notice
+  button. Dismiss it and an "📲 Install app" link stays available in the
+  topbar (and on the login card pre-login) to bring it back anytime.
+  Nothing here is a fixed-position overlay, so it never sits on top of
+  other controls (earlier versions had an install button that could cover
+  the Log out button — fixed by keeping install access in normal page flow
+  instead of a floating layer).
 - **iOS Safari**: no automatic prompt (Apple doesn't support
   `beforeinstallprompt`) — use Share → **Add to Home Screen** manually.
 
@@ -95,12 +99,20 @@ duplicate.
 ## Product catalog
 
 Retailers manage a simple product catalog (name, optional price, optional
-description) in the same dashboard where they log and track deliveries —
-one connected view, not a separate page. When logging a new delivery, a
-dropdown lists the retailer's products; picking one fills in the item
-description (still editable, or skip it and type freely). Products are
+description, optional photo) in the same dashboard where they log and track
+deliveries — one connected view, not a separate page. When logging a new
+delivery, a dropdown lists the retailer's products; picking one fills in the
+item description (still editable, or skip it and type freely). Products are
 scoped to the retailer that created them (`GET/POST /api/products`,
 `DELETE /api/products/:id`) — only a retailer can manage their own catalog.
+
+Product photos are resized/re-encoded to a small JPEG **in the browser**
+before upload (max 480px, quality ~0.72) and stored as a data URL on the
+product record. There's no separate file/blob storage to configure — the
+data store is a JSON/Redis blob either way, so this keeps setup at zero —
+but it does mean payload size matters: the backend rejects anything over
+~450KB decoded as a sanity check, well above what the client-side
+compression normally produces.
 
 ## Demoing the QR scan
 
@@ -117,7 +129,13 @@ scoped to the retailer that created them (`GET/POST /api/products`,
   toggle on every password field, JWT, bcrypt password hashing, optional
   Google sign-in)
 - All three role dashboards (Retailer, Dispatcher, Rider), including a
-  retailer product catalog wired into delivery creation
+  retailer product catalog (with photos) wired into delivery creation
+- Responsive layout tuned for phone-sized viewports and the installed-app
+  window specifically (safe-area padding for notches/home indicators,
+  collapsing grids, a topbar that wraps instead of clipping), plus hover
+  and transition polish (`prefers-reduced-motion` respected)
+- Backend response compression (gzip) and long-lived caching for static
+  icons, so repeat loads are cheap on mobile connections
 - The exact status state machine from the architecture deck, enforced
   server-side with role checks on every transition
 - A real, provable audit trail (`status_log`) — visible as "History" on any

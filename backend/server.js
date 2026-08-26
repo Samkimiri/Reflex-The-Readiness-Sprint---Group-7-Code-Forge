@@ -1,5 +1,6 @@
 const express = require("express");
 const cors = require("cors");
+const compression = require("compression");
 const path = require("path");
 
 const { requireAuth } = require("./middleware/auth");
@@ -10,8 +11,11 @@ const productRoutes = require("./routes/products");
 const { seed } = require("./seed");
 
 const app = express();
+app.use(compression()); // gzip everything — matters most on the mobile networks this app targets
 app.use(cors());
-app.use(express.json());
+// Default 100kb is too small for a product photo — the frontend compresses
+// images before sending, but this headroom keeps that from being fragile.
+app.use(express.json({ limit: "2mb" }));
 
 // Gate every request behind seeding once — cheap after the first request,
 // and avoids a cold-start race between seeding and the first API call.
@@ -26,7 +30,20 @@ app.use("/api/users", requireAuth, userRoutes);
 app.use("/api/products", requireAuth, productRoutes);
 
 // Serve the frontend (plain HTML/JS — no build step) from the same server.
-app.use(express.static(path.join(__dirname, "..", "frontend")));
+// Icons are effectively static content (rebuilding them means renaming, not
+// overwriting) so they get a long cache lifetime; everything else keeps
+// express.static's normal no-aggressive-caching defaults so app updates
+// (app.js, style.css, sw.js) show up on the next load instead of being
+// stuck behind a stale cache.
+app.use(
+  express.static(path.join(__dirname, "..", "frontend"), {
+    setHeaders(res, filePath) {
+      if (filePath.includes(`${path.sep}icons${path.sep}`)) {
+        res.setHeader("Cache-Control", `public, max-age=${60 * 60 * 24 * 7}`);
+      }
+    },
+  })
+);
 
 // Central error handler — statusMachine throws { status, message }
 app.use((err, req, res, next) => {

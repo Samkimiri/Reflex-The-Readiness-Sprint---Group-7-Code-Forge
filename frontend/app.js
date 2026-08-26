@@ -34,27 +34,59 @@ if ("serviceWorker" in navigator) {
   });
 }
 
+// No fixed-position button here on purpose — an overlay button was covering
+// the topbar's Log out button. Install access instead lives as a normal
+// inline link (in the topbar and on the login card, both in normal document
+// flow) plus an auto-shown prompt the first time the browser offers it.
 let deferredInstallPrompt = null;
-const installBtn = document.getElementById("install-btn");
+const installLinkLogin = document.getElementById("install-link-login");
+const installLinkApp = document.getElementById("install-link-app");
 
 window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault(); // stop Chrome's default mini-infobar — we show our own button instead
+  e.preventDefault();
   deferredInstallPrompt = e;
-  installBtn.classList.remove("hidden");
+  installLinkLogin.classList.remove("hidden");
+  installLinkApp.classList.remove("hidden");
+  if (!localStorage.getItem("reflex_install_prompt_dismissed")) {
+    openInstallPromptModal();
+  }
 });
 
-installBtn.addEventListener("click", async () => {
-  if (!deferredInstallPrompt) return;
-  installBtn.classList.add("hidden");
-  deferredInstallPrompt.prompt();
-  await deferredInstallPrompt.userChoice;
-  deferredInstallPrompt = null;
-});
+[installLinkLogin, installLinkApp].forEach((btn) => btn.addEventListener("click", () => openInstallPromptModal()));
 
 window.addEventListener("appinstalled", () => {
-  installBtn.classList.add("hidden");
+  installLinkLogin.classList.add("hidden");
+  installLinkApp.classList.add("hidden");
   deferredInstallPrompt = null;
 });
+
+async function openInstallPromptModal() {
+  if (!deferredInstallPrompt) return;
+  const modal = openModal(`
+    <button class="modal-close" data-close>&times;</button>
+    <h3>Install Reflex</h3>
+    <p style="font-size:13px;color:var(--muted)">
+      Add Reflex to your home screen for quick, app-like access — its own icon, its own window, and it still opens when you're offline.
+    </p>
+    <div class="form-grid">
+      <div class="full"><button class="btn btn-primary" id="install-modal-yes" type="button">Install</button></div>
+      <div class="full"><button class="btn btn-secondary" id="install-modal-no" type="button">Not now</button></div>
+    </div>
+  `);
+  const dismiss = () => {
+    localStorage.setItem("reflex_install_prompt_dismissed", "1");
+    closeModal(modal);
+  };
+  modal.querySelector("[data-close]").addEventListener("click", dismiss);
+  modal.querySelector("#install-modal-no").addEventListener("click", dismiss);
+  modal.querySelector("#install-modal-yes").addEventListener("click", async () => {
+    closeModal(modal);
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice;
+    deferredInstallPrompt = null;
+  });
+}
 
 function toast(msg, isError = false) {
   const el = document.getElementById("toast");
@@ -294,6 +326,13 @@ async function renderRetailer(root) {
         <div><label>Product name</label><input name="name" required /></div>
         <div><label>Price (KSh, optional)</label><input name="price" type="number" min="0" step="1" /></div>
         <div class="full"><label>Description (optional)</label><input name="description" /></div>
+        <div class="full">
+          <label>Photo (optional)</label>
+          <div class="image-picker">
+            <img id="product-image-preview" class="image-preview hidden" alt="" />
+            <input type="file" name="imageFile" id="product-image-input" accept="image/*" />
+          </div>
+        </div>
         <div class="full"><button class="btn btn-secondary" type="submit">Add product</button></div>
       </form>
       <div class="delivery-list" style="margin-top:16px;">
@@ -308,6 +347,24 @@ async function renderRetailer(root) {
       </div>
     </div>
   `;
+
+  let pendingProductImage = null;
+  const imageInput = document.getElementById("product-image-input");
+  const imagePreview = document.getElementById("product-image-preview");
+  if (imageInput) {
+    imageInput.addEventListener("change", async () => {
+      const file = imageInput.files[0];
+      if (!file) return;
+      try {
+        pendingProductImage = await compressImageToDataUrl(file);
+        imagePreview.src = pendingProductImage;
+        imagePreview.classList.remove("hidden");
+      } catch (e) {
+        toast("Couldn't read that image — try a different file.", true);
+        imageInput.value = "";
+      }
+    });
+  }
 
   const productPick = document.getElementById("product-pick");
   if (productPick) {
@@ -334,8 +391,10 @@ async function renderRetailer(root) {
     e.preventDefault();
     const fd = new FormData(e.target);
     const body = Object.fromEntries(fd);
+    delete body.imageFile;
     if (!body.price) delete body.price;
     if (!body.description) delete body.description;
+    if (pendingProductImage) body.image = pendingProductImage;
     try {
       await api("/products", { method: "POST", body });
       toast("Product added.");
@@ -356,8 +415,12 @@ async function renderRetailer(root) {
 }
 
 function productCard(p) {
+  const thumb = p.image
+    ? `<img class="product-thumb" src="${p.image}" alt="${escapeHtml(p.name)}" />`
+    : `<div class="product-thumb product-thumb-placeholder">${escapeHtml((p.name || "?")[0].toUpperCase())}</div>`;
   return `
     <div class="delivery-card">
+      ${thumb}
       <div class="delivery-main">
         <div class="delivery-title">${escapeHtml(p.name)}${p.price != null ? `<span class="price-tag">KSh ${p.price}</span>` : ""}</div>
         ${p.description ? `<div class="delivery-sub">${escapeHtml(p.description)}</div>` : ""}
@@ -367,6 +430,32 @@ function productCard(p) {
       </div>
     </div>
   `;
+}
+
+// Resizes+recompresses an image client-side before it's stored as a data
+// URL in the product record (the store is a JSON/Redis blob, not a file
+// bucket, so keeping payloads small matters). Caps the longest edge at
+// 480px and re-encodes as JPEG.
+function compressImageToDataUrl(file, maxDim = 480, quality = 0.72) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onerror = () => reject(reader.error);
+    reader.onload = () => {
+      const img = new Image();
+      img.onerror = () => reject(new Error("Invalid image file."));
+      img.onload = () => {
+        const scale = Math.min(1, maxDim / Math.max(img.width, img.height));
+        const canvas = document.createElement("canvas");
+        canvas.width = Math.round(img.width * scale);
+        canvas.height = Math.round(img.height * scale);
+        const ctx = canvas.getContext("2d");
+        ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+        resolve(canvas.toDataURL("image/jpeg", quality));
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
 }
 
 async function removeProduct(id, after) {

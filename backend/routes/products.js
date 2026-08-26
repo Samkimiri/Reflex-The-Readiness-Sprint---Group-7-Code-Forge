@@ -13,11 +13,17 @@ router.get("/", async (req, res) => {
   res.json(products);
 });
 
-// POST /api/products  (retailer only)  { name, price?, description? }
+// A data URL this size decodes to roughly 450KB — the frontend compresses
+// images to a ~480px JPEG before sending (usually tens of KB), so this is a
+// sanity ceiling against a huge/unexpected upload bloating the JSON store,
+// not the normal case.
+const MAX_IMAGE_DATA_URL_LENGTH = 600_000;
+
+// POST /api/products  (retailer only)  { name, price?, description?, image? }
 router.post("/", async (req, res) => {
   if (req.user.role !== "retailer") return res.status(403).json({ error: "Only a retailer can add products." });
 
-  const { name, price, description } = req.body || {};
+  const { name, price, description, image } = req.body || {};
   if (!name || !name.trim()) return res.status(400).json({ error: "name is required." });
 
   let parsedPrice = null;
@@ -28,11 +34,23 @@ router.post("/", async (req, res) => {
     }
   }
 
+  let parsedImage = null;
+  if (image) {
+    if (typeof image !== "string" || !image.startsWith("data:image/")) {
+      return res.status(400).json({ error: "image must be an image data URL." });
+    }
+    if (image.length > MAX_IMAGE_DATA_URL_LENGTH) {
+      return res.status(400).json({ error: "Image is too large — try a smaller photo." });
+    }
+    parsedImage = image;
+  }
+
   const product = await createProduct({
     retailer_id: req.user.id,
     name: name.trim(),
     price: parsedPrice,
     description: description ? description.trim() : null,
+    image: parsedImage,
   });
   res.status(201).json(product);
 });

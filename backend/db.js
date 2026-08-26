@@ -13,7 +13,7 @@
 //   deliveries   -> id, retailer_id, rider_id, customer_name, customer_phone,
 //                   address, item_description, status, qr_code, created_at, updated_at
 //   status_log   -> id, delivery_id, changed_by, old_status, new_status, changed_at
-//   products     -> id, retailer_id, name, price, description, created_at
+//   products     -> id, retailer_id, name, price, description, image, created_at
 //
 // Swapping this for real Postgres later means replacing readDB/writeDB (and
 // the KV key) with SQL queries — the rest of the app (routes, state machine)
@@ -206,7 +206,7 @@ async function getStatusLog(delivery_id) {
 }
 
 // ---------- products (a retailer's catalog of what they sell) ----------
-async function createProduct({ retailer_id, name, price = null, description = null }) {
+async function createProduct({ retailer_id, name, price = null, description = null, image = null }) {
   const db = await readDB();
   const product = {
     id: nextId(db, "products"),
@@ -214,6 +214,7 @@ async function createProduct({ retailer_id, name, price = null, description = nu
     name,
     price,
     description,
+    image,
     created_at: new Date().toISOString(),
   };
   db.products.push(product);
