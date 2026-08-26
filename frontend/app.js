@@ -135,6 +135,43 @@ document.querySelectorAll(".password-toggle").forEach((btn) => {
   });
 });
 
+// ---------- "How it works" guide ----------
+document.getElementById("guide-link").addEventListener("click", openGuideModal);
+
+function openGuideModal() {
+  const steps = [
+    { icon: "📝", role: "Retailer", title: "Log a delivery", desc: "A shop owner logs what's going out, to whom, and where — takes seconds, no paperwork." },
+    { icon: "🧭", role: "Dispatcher", title: "Assign a rider", desc: "The dispatch desk sees every open request and hands it to whoever's free." },
+    { icon: "🛵", role: "Rider", title: "Pick it up", desc: "The rider taps \"Mark Picked Up\" the moment they've physically got the item." },
+    { icon: "✅", role: "Rider + Retailer", title: "Scan to confirm", desc: "Delivery isn't \"done\" until the rider scans the retailer's QR code — proof, not just a claim." },
+  ];
+
+  const modal = openModal(`
+    <button class="modal-close" data-close>&times;</button>
+    <h3>How Reflex works</h3>
+    <p class="guide-intro">Think of it as a relay race — one delivery, three people, everyone accountable for their leg of it.</p>
+    <div class="guide-steps">
+      ${steps.map((s) => `
+        <div class="guide-step">
+          <div class="guide-step-icon">${s.icon}</div>
+          <div class="guide-step-body">
+            <div class="guide-step-title">${escapeHtml(s.title)}<span class="guide-step-role">${escapeHtml(s.role)}</span></div>
+            <div class="guide-step-desc">${escapeHtml(s.desc)}</div>
+          </div>
+        </div>
+      `).join("")}
+    </div>
+    <div class="guide-tip">
+      💡 <strong>Try it live:</strong> pick a demo account below, then open this same site in an incognito
+      window (or another tab) and log in as a different role. Watch one delivery move through the whole
+      relay in real time — that's the actual point of this prototype.
+    </div>
+    <button class="btn btn-primary guide-close-btn" id="guide-got-it" type="button">Got it, let's go!</button>
+  `);
+  modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
+  modal.querySelector("#guide-got-it").addEventListener("click", () => closeModal(modal));
+}
+
 // ---------- Register ----------
 document.getElementById("show-register-btn").addEventListener("click", () => setAuthMode("register"));
 document.getElementById("show-login-btn").addEventListener("click", () => setAuthMode("login"));

@@ -44,6 +44,23 @@ body {
   margin: 4px 0 0;
 }
 
+.guide-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin: 8px 0 4px;
+  padding: 5px 12px;
+  background: linear-gradient(135deg, #e6f9f5, #dcf0fb);
+  border: 1px solid #bfe6df;
+  border-radius: 20px;
+  color: var(--teal-dark);
+  font-weight: 700;
+  font-size: 12px;
+  text-decoration: none;
+  transition: transform 0.15s ease, box-shadow 0.15s ease;
+}
+.guide-link:hover { transform: translateY(-1px); box-shadow: 0 3px 10px rgba(2,128,144,0.18); }
+
 /* ---------- Login ---------- */
 @keyframes loginRise {
   from { opacity: 0; transform: translateY(16px); }
@@ -578,6 +595,72 @@ h2 { font-size: 20px; margin: 0 0 4px; }
 .modal-close:hover { color: var(--cherry); transform: rotate(90deg); }
 
 .qr-img { display: block; margin: 14px auto; border: 8px solid var(--bg); border-radius: 8px; }
+
+/* ---------- "How it works" guide ---------- */
+.guide-intro { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 4px 0 20px; }
+
+.guide-steps { display: flex; flex-direction: column; }
+
+.guide-step {
+  display: flex;
+  gap: 14px;
+  position: relative;
+  padding-bottom: 22px;
+}
+.guide-step:last-child { padding-bottom: 0; }
+
+.guide-step::after {
+  content: "";
+  position: absolute;
+  left: 19px;
+  top: 42px;
+  bottom: -2px;
+  width: 2px;
+  background: var(--border);
+}
+.guide-step:last-child::after { display: none; }
+
+.guide-step-icon {
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 18px;
+  background: var(--bg);
+  border: 2px solid var(--teal);
+  z-index: 1;
+  transition: transform 0.2s ease;
+}
+.guide-step:hover .guide-step-icon { transform: scale(1.12) rotate(-6deg); }
+
+.guide-step-body { padding-top: 5px; }
+.guide-step-title { font-weight: 700; font-size: 14px; color: var(--text); }
+.guide-step-role {
+  display: inline-block;
+  margin-left: 6px;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+  color: var(--teal);
+}
+.guide-step-desc { font-size: 12px; color: var(--muted); margin-top: 3px; line-height: 1.45; }
+
+.guide-tip {
+  background: #fff8e6;
+  border: 1px solid #f5e2a8;
+  border-radius: 10px;
+  padding: 12px 14px;
+  font-size: 12px;
+  color: #7a5c00;
+  margin-top: 18px;
+  line-height: 1.5;
+}
+
+.guide-close-btn { width: 100%; margin-top: 18px; }
 
 .history-item {
   display: flex; justify-content: space-between; font-size: 12px;

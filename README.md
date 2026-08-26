@@ -209,6 +209,9 @@ compression normally produces.
   and transition polish (`prefers-reduced-motion` respected)
 - Backend response compression (gzip) and long-lived caching for static
   icons, so repeat loads are cheap on mobile connections
+- An in-app "How Reflex works" guide (✨ link on the login screen) — a
+  four-step illustrated walkthrough of the retailer→dispatcher→rider→QR
+  relay, for anyone opening the prototype cold
 - The exact status state machine from the architecture deck, enforced
   server-side with role checks on every transition
 - A real, provable audit trail (`status_log`) — visible as "History" on any
