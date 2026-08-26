@@ -61,6 +61,7 @@ router.get("/", async (req, res) => {
 router.get("/:id", async (req, res) => {
   const delivery = await getDeliveryById(req.params.id);
   if (!delivery) return res.status(404).json({ error: "Delivery not found." });
+  if (!canViewDelivery(req.user, delivery)) return res.status(404).json({ error: "Delivery not found." });
 
   const rawHistory = await getStatusLog(delivery.id);
   const history = await Promise.all(
@@ -168,20 +169,37 @@ router.post("/:id/scan", async (req, res, next) => {
   }
 });
 
-// GET /api/deliveries/:id/qrcode.png  — the QR image the retailer displays/prints
+// GET /api/deliveries/:id/qrcode.png  — the QR image the retailer displays/prints.
+// Only the owning retailer can fetch this: it's a rendering of the raw
+// qr_code token, and anyone holding that token can (mis)use it — the same
+// party who's allowed to see `qr_code` in JSON responses (see canSeeToken
+// below) is the only party who should be able to render it as an image.
 router.get("/:id/qrcode.png", async (req, res) => {
   const delivery = await getDeliveryById(req.params.id);
   if (!delivery) return res.status(404).end();
+  if (!canSeeToken(req.user, delivery)) return res.status(404).end();
   res.setHeader("Content-Type", "image/png");
   QRCode.toFileStream(res, delivery.qr_code, { width: 300, margin: 1 });
 });
+
+// A dispatcher coordinates every delivery, so sees all of them; a retailer
+// only their own; a rider only the ones assigned to them.
+function canViewDelivery(user, delivery) {
+  if (user.role === "dispatcher") return true;
+  if (user.role === "retailer") return user.id === delivery.retailer_id;
+  if (user.role === "rider") return user.id === delivery.rider_id;
+  return false;
+}
+
+function canSeeToken(user, delivery) {
+  return user.role === "retailer" && user.id === delivery.retailer_id;
+}
 
 // Shape returned to clients — retailers/dispatchers/riders all see the same
 // fields; only the raw qr_code stays out of list views to keep it out of casual reach.
 function withView(delivery, requestingUser) {
   const base = { ...delivery };
-  const canSeeToken = requestingUser.role === "retailer" && requestingUser.id === delivery.retailer_id;
-  if (!canSeeToken) delete base.qr_code;
+  if (!canSeeToken(requestingUser, delivery)) delete base.qr_code;
   return base;
 }
 

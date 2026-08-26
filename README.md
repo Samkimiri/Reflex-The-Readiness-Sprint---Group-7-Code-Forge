@@ -16,6 +16,12 @@ npm start
 Then open **http://localhost:4000** in your browser. The frontend is served by
 the same server — one command runs everything.
 
+Run the test suite with `npm test` (Node's built-in test runner — no extra
+dependency): unit tests for the status-machine rules in `statusMachine.js`,
+plus integration tests that boot the real Express app on a random port and
+exercise it over HTTP — registration/login, role checks on every delivery
+transition, and the access-control rules described below.
+
 On first run it seeds three demo accounts — login is by **email**, not phone
 (phone is still collected and stored, just no longer the login identifier):
 
@@ -123,11 +129,46 @@ compression normally produces.
   manual entry field in the same modal — copy the token from the retailer's
   QR endpoint response or just paste it in.
 
+## Security notes
+
+- **Access control is scoped per-party, not just per-role.** A dispatcher
+  legitimately sees and can act on every delivery; a retailer can only see
+  and cancel *their own*; a rider can only see deliveries assigned to
+  *them*. Requesting a delivery you're not party to returns 404, not 403 —
+  deliberately, so an unauthorized request can't be used to confirm a given
+  ID even exists. (An earlier version of this checked role but not
+  ownership, letting any retailer view or cancel any other retailer's
+  deliveries — fixed, and covered by a regression test in
+  `backend/test/api.test.js` so it can't quietly come back.)
+- **Rate limiting on `/api/auth/*`** (`express-rate-limit`, 30 requests per
+  15 minutes per IP) is best-effort: a serverless deployment runs several
+  concurrent instances, each with its own in-memory counter, so a
+  distributed attacker can partially evade it by spreading requests across
+  instances. Real protection at that level needs a shared store (the same
+  Redis already used for data would work) — a reasonable next step if this
+  ever needs to withstand a serious credential-stuffing attempt rather than
+  casual abuse.
+- **CSP and other security headers** via `helmet`, scoped to exactly what
+  this app loads (jsQR from cdnjs, Google Identity Services, same-origin
+  fetches, `data:`/`blob:` images for product photos and the QR code).
+- **`JWT_SECRET` must be a real secret in production** — the code falls
+  back to a hardcoded dev value otherwise, which is fine on `localhost` but
+  not once the source is public. Vercel's env var UI is where to set it
+  (see the deployment section above).
+- Passwords and emails are validated server-side (minimum length, basic
+  email shape), not just in the browser — client-side `required`/`type`
+  attributes are a UX nicety, not a security boundary, since anyone can
+  call the API directly.
+- No CORS middleware: the frontend and API are served from the same origin
+  by the same Express app, so there's no cross-origin request to allow in
+  the first place — `cors()` was removed as unneeded attack surface.
+
 ## What's actually implemented
 
 - Full auth (self-service register/login by email+password, a show/hide
   toggle on every password field, JWT, bcrypt password hashing, optional
   Google sign-in)
+- Automated tests (`npm test`) and a `GET /api/health` liveness endpoint
 - All three role dashboards (Retailer, Dispatcher, Rider), including a
   retailer product catalog (with photos) wired into delivery creation
 - Responsive layout tuned for phone-sized viewports and the installed-app

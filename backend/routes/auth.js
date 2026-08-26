@@ -14,6 +14,9 @@ const router = express.Router();
 
 const ROLES = ["retailer", "dispatcher", "rider"];
 const GOOGLE_CLIENT_ID = process.env.GOOGLE_CLIENT_ID || null;
+// Deliberately simple — just "looks like an email", not full RFC 5322. The
+// goal is catching typos/garbage input, not being a validator of record.
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 // Client ID is not a secret — Google's Sign-In JS needs it in the browser —
 // but the frontend has no build step to inject it at build time, so it
@@ -27,6 +30,12 @@ router.post("/register", async (req, res) => {
   const email = normalizeEmail(req.body && req.body.email);
   if (!name || !phone || !email || !password || !role) {
     return res.status(400).json({ error: "name, phone, email, password, and role are all required." });
+  }
+  if (!EMAIL_RE.test(email)) {
+    return res.status(400).json({ error: "That doesn't look like a valid email address." });
+  }
+  if (password.length < 6) {
+    return res.status(400).json({ error: "Password must be at least 6 characters." });
   }
   if (!ROLES.includes(role)) {
     return res.status(400).json({ error: `role must be one of: ${ROLES.join(", ")}` });

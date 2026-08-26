@@ -8,8 +8,8 @@
 //   requested -> assigned   : dispatcher only, must supply rider_id
 //   assigned  -> picked_up  : only the assigned rider
 //   picked_up -> delivered  : only the assigned rider, normally via /scan
-//   requested -> cancelled  : retailer or dispatcher
-//   assigned  -> cancelled  : retailer or dispatcher
+//   requested -> cancelled  : the delivery's own retailer, or any dispatcher
+//   assigned  -> cancelled  : the delivery's own retailer, or any dispatcher
 //   anything else           : rejected
 
 const TRANSITIONS = {
@@ -38,9 +38,9 @@ function assertRole(action, user, delivery) {
         throw httpError(403, "Only the assigned rider can confirm delivery.");
       break;
     case "cancel":
-      if (!["retailer", "dispatcher"].includes(user.role))
-        throw httpError(403, "Only a retailer or dispatcher can cancel a delivery.");
-      break;
+      if (user.role === "dispatcher") break; // a dispatcher can cancel any delivery
+      if (user.role === "retailer" && user.id === delivery.retailer_id) break; // but a retailer only their own
+      throw httpError(403, "Only the retailer who logged this delivery, or a dispatcher, can cancel it.");
     default:
       throw httpError(400, "Unknown action.");
   }
