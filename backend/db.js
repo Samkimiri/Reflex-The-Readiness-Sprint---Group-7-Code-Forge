@@ -47,6 +47,9 @@ async function readDB() {
   }
   if (!fs.existsSync(DB_FILE)) {
     const empty = emptyDB();
+    // backend/data/db.json is gitignored, and git doesn't track empty
+    // directories — so a fresh clone has no backend/data/ at all yet.
+    fs.mkdirSync(path.dirname(DB_FILE), { recursive: true });
     fs.writeFileSync(DB_FILE, JSON.stringify(empty, null, 2));
     return empty;
   }
