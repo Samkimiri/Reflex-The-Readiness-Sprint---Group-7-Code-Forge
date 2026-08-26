@@ -198,3 +198,14 @@ Without the Redis integration connected, the app still deploys and runs, but
 falls back to writing `db.json` inside the function's `/tmp` — data won't be
 shared across function instances and can reset at any time. Fine for a quick
 look, not for a live multi-role demo.
+
+### If auto-deploy silently stops working
+
+Vercel requires each commit's author email to match a real GitHub account
+with access to the connected repo — otherwise the deployment is created but
+immediately marked `BLOCKED` (`COMMIT_AUTHOR_REQUIRED`), before a build even
+runs. This is easy to miss because the site keeps serving the last
+successful deployment, so nothing *looks* broken until you check the
+Deployments tab and see recent ones stuck on `BLOCKED` (or the CLI shows
+`UNKNOWN`). Fix: `git config user.email you@example.com` with an email
+GitHub recognizes for your account, then push again.
