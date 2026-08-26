@@ -21,6 +21,23 @@ body {
 
 .hidden { display: none !important; }
 
+.install-btn {
+  position: fixed;
+  top: 14px;
+  right: 16px;
+  z-index: 60;
+  padding: 8px 14px;
+  background: var(--mint);
+  color: var(--teal-dark);
+  border: none;
+  border-radius: 20px;
+  font-weight: 700;
+  font-size: 12px;
+  cursor: pointer;
+  box-shadow: 0 4px 14px rgba(0,0,0,0.25);
+}
+.install-btn:hover { filter: brightness(0.95); }
+
 /* ---------- Login ---------- */
 #login-screen {
   min-height: 100vh;

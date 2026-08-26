@@ -34,6 +34,27 @@ on the delivered one.
 Log in as each in a separate browser tab (or a normal + incognito window) to
 demo the full three-role flow at once.
 
+## Installing it as an app (PWA)
+
+Reflex is an installable Progressive Web App — `manifest.json` + `sw.js`
+(service worker) turn it into something with its own icon, its own window
+(no browser chrome), and an app-shell that still opens when offline.
+
+- **Desktop Chrome/Edge**: an install icon appears in the address bar, or use
+  the green **Install app** button that shows up top-right once the browser
+  decides the page qualifies (needs HTTPS — works on the Vercel deployment;
+  `localhost` also counts as a secure context for this).
+- **Android Chrome**: "Add to Home screen" from the browser menu, or the same
+  install prompt.
+- **iOS Safari**: no automatic prompt (Apple doesn't support
+  `beforeinstallprompt`) — use Share → **Add to Home Screen** manually.
+
+Only the static shell (HTML/CSS/JS/icons) is cached for offline use —
+`/api/*` is deliberately never cached, since delivery status is live data
+the app polls every 4s and stale cached numbers would be actively
+misleading. Offline just means the shell still opens instead of a browser
+error page; it doesn't mean deliveries can be updated without a connection.
+
 ## Creating accounts
 
 Click **Create an account** on the login screen to self-register with a

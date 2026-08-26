@@ -27,6 +27,35 @@ function waitFor(check, timeoutMs) {
   });
 }
 
+// ---------- PWA: service worker + install prompt ----------
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("/sw.js").catch((e) => console.warn("SW registration failed:", e));
+  });
+}
+
+let deferredInstallPrompt = null;
+const installBtn = document.getElementById("install-btn");
+
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault(); // stop Chrome's default mini-infobar — we show our own button instead
+  deferredInstallPrompt = e;
+  installBtn.classList.remove("hidden");
+});
+
+installBtn.addEventListener("click", async () => {
+  if (!deferredInstallPrompt) return;
+  installBtn.classList.add("hidden");
+  deferredInstallPrompt.prompt();
+  await deferredInstallPrompt.userChoice;
+  deferredInstallPrompt = null;
+});
+
+window.addEventListener("appinstalled", () => {
+  installBtn.classList.add("hidden");
+  deferredInstallPrompt = null;
+});
+
 function toast(msg, isError = false) {
   const el = document.getElementById("toast");
   el.textContent = msg;
