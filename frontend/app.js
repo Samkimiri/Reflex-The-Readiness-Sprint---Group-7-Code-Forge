@@ -278,6 +278,7 @@ function render() {
   if (state.user.role === "retailer") return renderRetailer(root);
   if (state.user.role === "dispatcher") return renderDispatcher(root);
   if (state.user.role === "rider") return renderRider(root);
+  if (state.user.role === "admin") return renderAdmin(root);
 }
 
 function statusLabel(s) {
@@ -615,6 +616,138 @@ function riderCard(d) {
       </div>
     </div>
   `;
+}
+
+// ================= ADMIN =================
+// Oversight only — a way to verify the whole system is actually healthy
+// (every user, every delivery, every product across every retailer), not
+// an operational dashboard. Read access to everything; the only writes it
+// can make are the dispatcher-equivalent assign/cancel overrides the
+// backend already grants this role.
+async function renderAdmin(root) {
+  const [health, users, deliveries, products] = await Promise.all([
+    api("/health").catch(() => null),
+    api("/users").catch((e) => { toast(e.message, true); return []; }),
+    api("/deliveries").catch((e) => { toast(e.message, true); return []; }),
+    api("/products").catch((e) => { toast(e.message, true); return []; }),
+  ]);
+
+  const usersById = Object.fromEntries(users.map((u) => [u.id, u]));
+  const byRole = countBy(users, (u) => u.role);
+  const byStatus = countBy(deliveries, (d) => d.status);
+
+  root.innerHTML = `
+    <h2>Admin — System Overview</h2>
+    <p class="subtitle">Read-only view across every retailer, rider, and dispatcher — for verifying the prototype is actually working, not day-to-day operations.</p>
+
+    <div class="panel">
+      <h3>At a glance</h3>
+      <div class="stat-grid">
+        ${statCard("API", health ? "Healthy" : "Unreachable", health ? "ok" : "bad")}
+        ${statCard("Uptime", health ? fmtUptime(health.uptime) : "—")}
+        ${statCard("Users", users.length, null, `${byRole.retailer || 0} retailer · ${byRole.dispatcher || 0} dispatcher · ${byRole.rider || 0} rider`)}
+        ${statCard("Deliveries", deliveries.length, null, `${byStatus.requested || 0} open · ${byStatus.delivered || 0} delivered`)}
+        ${statCard("Products", products.length)}
+        ${statCard("Cancelled", byStatus.cancelled || 0)}
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>All deliveries (${deliveries.length})</h3>
+      <div class="delivery-list">
+        ${deliveries.length ? deliveries.slice().sort((a, b) => new Date(b.created_at) - new Date(a.created_at)).map((d) => adminDeliveryCard(d, usersById)).join("") : `<div class="empty-state">No deliveries in the system yet.</div>`}
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>All users (${users.length})</h3>
+      <div class="table-scroll">
+        <table class="data-table">
+          <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Joined</th></tr></thead>
+          <tbody>
+            ${users.map((u) => `
+              <tr>
+                <td>${escapeHtml(u.name)}</td>
+                <td>${escapeHtml(u.email || "—")}</td>
+                <td>${escapeHtml(u.phone || "—")}</td>
+                <td><span class="role-pill role-${u.role}">${u.role}</span></td>
+                <td>${fmtTime(u.created_at)}</td>
+              </tr>
+            `).join("")}
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <div class="panel">
+      <h3>All products (${products.length})</h3>
+      <div class="delivery-list">
+        ${products.length ? products.map((p) => adminProductCard(p, usersById)).join("") : `<div class="empty-state">No products in the system yet.</div>`}
+      </div>
+    </div>
+  `;
+
+  root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
+  root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr)));
+}
+
+function adminDeliveryCard(d, usersById) {
+  const retailerName = (usersById[d.retailer_id] || {}).name || `retailer #${d.retailer_id}`;
+  const riderName = d.rider_id ? (usersById[d.rider_id] || {}).name || `rider #${d.rider_id}` : null;
+  return `
+    <div class="delivery-card">
+      <div class="delivery-main">
+        <div class="delivery-title">${escapeHtml(d.customer_name)} <span class="status-pill status-${d.status}">${statusLabel(d.status)}</span></div>
+        <div class="delivery-sub">${escapeHtml(d.item_description)} — ${escapeHtml(d.address)}</div>
+        <div class="delivery-sub">Retailer: ${escapeHtml(retailerName)}${riderName ? ` · Rider: ${escapeHtml(riderName)}` : ""}</div>
+      </div>
+      <div class="delivery-actions">
+        ${d.status !== "delivered" && d.status !== "cancelled" ? `<button class="btn btn-secondary btn-sm" data-qr="${d.id}">Show QR</button>` : ""}
+        <button class="btn btn-secondary btn-sm" data-history="${d.id}">History</button>
+      </div>
+    </div>
+  `;
+}
+
+function adminProductCard(p, usersById) {
+  const retailerName = (usersById[p.retailer_id] || {}).name || `retailer #${p.retailer_id}`;
+  const thumb = p.image
+    ? `<img class="product-thumb" src="${p.image}" alt="${escapeHtml(p.name)}" />`
+    : `<div class="product-thumb product-thumb-placeholder">${escapeHtml((p.name || "?")[0].toUpperCase())}</div>`;
+  return `
+    <div class="delivery-card">
+      ${thumb}
+      <div class="delivery-main">
+        <div class="delivery-title">${escapeHtml(p.name)}${p.price != null ? `<span class="price-tag">KSh ${p.price}</span>` : ""}</div>
+        <div class="delivery-sub">${escapeHtml(retailerName)}${p.description ? ` — ${escapeHtml(p.description)}` : ""}</div>
+      </div>
+    </div>
+  `;
+}
+
+function statCard(label, value, tone, sub) {
+  return `
+    <div class="stat-card${tone ? ` stat-${tone}` : ""}">
+      <div class="stat-value">${escapeHtml(String(value))}</div>
+      <div class="stat-label">${escapeHtml(label)}</div>
+      ${sub ? `<div class="stat-sub">${escapeHtml(sub)}</div>` : ""}
+    </div>
+  `;
+}
+
+function countBy(items, keyFn) {
+  return items.reduce((acc, item) => {
+    const k = keyFn(item);
+    acc[k] = (acc[k] || 0) + 1;
+    return acc;
+  }, {});
+}
+
+function fmtUptime(seconds) {
+  const m = Math.floor(seconds / 60);
+  if (m < 60) return `${m}m`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
 }
 
 // ================= Shared actions =================

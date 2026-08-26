@@ -27,8 +27,9 @@ test("canTransition — unknown status is never a valid `from`", () => {
   assert.equal(canTransition("bogus", "requested"), false);
 });
 
-test("assertRole — assign allows dispatcher", () => {
+test("assertRole — assign allows dispatcher or admin", () => {
   assert.doesNotThrow(() => assertRole("assign", { role: "dispatcher" }, {}));
+  assert.doesNotThrow(() => assertRole("assign", { role: "admin" }, {}));
 });
 
 test("assertRole — assign rejects non-dispatchers with 403", () => {
@@ -61,9 +62,10 @@ test("assertRole — pick_up/deliver require the assigned rider specifically", (
   }
 });
 
-test("assertRole — cancel: a dispatcher can cancel anyone's delivery", () => {
+test("assertRole — cancel: a dispatcher or admin can cancel anyone's delivery", () => {
   const delivery = { retailer_id: 42 };
   assert.doesNotThrow(() => assertRole("cancel", { role: "dispatcher", id: 1 }, delivery));
+  assert.doesNotThrow(() => assertRole("cancel", { role: "admin", id: 1 }, delivery));
 });
 
 test("assertRole — cancel: a retailer can only cancel their own delivery", () => {

@@ -250,3 +250,58 @@ test("a delivery is only visible/actionable to parties actually involved in it",
   assert.equal(goodCancel.status, 200);
   assert.equal(goodCancel.data.status, "cancelled");
 });
+
+test("admin role is not self-registerable", async () => {
+  const { status, data } = await api("/api/auth/register", {
+    method: "POST",
+    body: { name: "Sneaky", phone: "0711000666", email: `sneaky-${Date.now()}@example.com`, password: "testpass1", role: "admin" },
+  });
+  assert.equal(status, 400);
+  assert.match(data.error, /role must be one of/);
+});
+
+test("admin has full oversight: sees every user and every retailer's deliveries", async () => {
+  // admin@reflex.demo is seeded by the app itself (see backend/seed.js) —
+  // admin accounts can't be created through the public API, only seeded.
+  const adminLogin = await api("/api/auth/login", {
+    method: "POST",
+    body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "5I9H3ifTmCMj" },
+  });
+  assert.equal(adminLogin.status, 200);
+  const adminToken = adminLogin.data.token;
+
+  const retailer = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Oversight Test", phone: `0741${Date.now() % 1000000}`, email: `oversight-${Date.now()}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+  const created = await api("/api/deliveries", {
+    method: "POST",
+    token: retailer.token,
+    body: { customer_name: "Admin Sees This", customer_phone: "0700555444", address: "Nairobi", item_description: "Oversight check" },
+  });
+
+  const allUsers = await api("/api/users", { token: adminToken });
+  assert.equal(allUsers.status, 200);
+  assert.ok(allUsers.data.some((u) => u.email === retailer.user.email));
+
+  const allDeliveries = await api("/api/deliveries", { token: adminToken });
+  assert.equal(allDeliveries.status, 200);
+  assert.ok(allDeliveries.data.some((d) => d.id === created.data.id));
+
+  const oneDelivery = await api(`/api/deliveries/${created.data.id}`, { token: adminToken });
+  assert.equal(oneDelivery.status, 200);
+});
+
+test("only a dispatcher or admin can list users; a retailer/rider cannot", async () => {
+  const retailer = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "No Directory", phone: `0742${Date.now() % 1000000}`, email: `nodir-${Date.now()}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+  const { status, data } = await api("/api/users", { token: retailer.token });
+  assert.equal(status, 403);
+  assert.match(data.error, /Not authorized/);
+});

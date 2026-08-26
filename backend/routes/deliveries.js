@@ -182,16 +182,19 @@ router.get("/:id/qrcode.png", async (req, res) => {
   QRCode.toFileStream(res, delivery.qr_code, { width: 300, margin: 1 });
 });
 
-// A dispatcher coordinates every delivery, so sees all of them; a retailer
-// only their own; a rider only the ones assigned to them.
+// A dispatcher coordinates every delivery, so sees all of them; so does an
+// admin (oversight — this is the account used to verify the whole system is
+// healthy, not an operational role); a retailer only their own; a rider
+// only the ones assigned to them.
 function canViewDelivery(user, delivery) {
-  if (user.role === "dispatcher") return true;
+  if (user.role === "dispatcher" || user.role === "admin") return true;
   if (user.role === "retailer") return user.id === delivery.retailer_id;
   if (user.role === "rider") return user.id === delivery.rider_id;
   return false;
 }
 
 function canSeeToken(user, delivery) {
+  if (user.role === "admin") return true;
   return user.role === "retailer" && user.id === delivery.retailer_id;
 }
 

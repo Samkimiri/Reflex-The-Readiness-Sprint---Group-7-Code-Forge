@@ -31,6 +31,16 @@ On first run it seeds three demo accounts — login is by **email**, not phone
 | Dispatcher | dispatcher@reflex.demo   | dispatch123  |
 | Rider      | rider@reflex.demo        | rider123     |
 
+...plus one **admin** account, seeded the same way but *not* shown as a
+public demo button on the login screen — it has full read access to every
+user and every retailer's deliveries, so a one-click public login for it
+would be a real privacy exposure. Log in with it through the normal
+email/password form:
+
+| Role  | Email               | Password                              |
+|-------|---------------------|----------------------------------------|
+| Admin | admin@reflex.demo   | `5I9H3ifTmCMj` (or `ADMIN_SEED_PASSWORD` if you set one before first boot) |
+
 ...plus five example deliveries under the retailer account, one in each
 status (`requested`, `assigned`, `picked_up`, `delivered`, `cancelled`), and
 four example products in the retailer's catalog — so every dashboard has
@@ -102,6 +112,25 @@ no repeat prompt. If the Google account's email matches an existing
 email/password account, that account is linked instead of creating a
 duplicate.
 
+## Admin oversight dashboard
+
+A fourth role, `admin`, exists purely to answer "is the prototype actually
+working" at a glance — not to run day-to-day operations. Logging in as
+admin shows: live/uptime status from `/api/health`, counts of users by
+role and deliveries by status, every delivery across every retailer (with
+retailer + rider attribution, History, and QR access), every registered
+user in a table (name/email/phone/role/joined), and every product across
+every retailer's catalog.
+
+It's deliberately scoped as **oversight, not operations**: admin can view
+everything and has the same assign/cancel override a dispatcher has (both
+backed by the same role check), but can't mark a delivery picked-up or
+delivered — those represent a real rider physically doing something, and
+letting admin fake that would make the audit trail (`changed_by`) lie
+about who actually did it. Admin also isn't self-registerable — the
+public `/api/auth/register` role list is still just
+retailer/dispatcher/rider; an admin account only ever comes from seeding.
+
 ## Product catalog
 
 Retailers manage a simple product catalog (name, optional price, optional
@@ -169,8 +198,11 @@ compression normally produces.
   toggle on every password field, JWT, bcrypt password hashing, optional
   Google sign-in)
 - Automated tests (`npm test`) and a `GET /api/health` liveness endpoint
-- All three role dashboards (Retailer, Dispatcher, Rider), including a
-  retailer product catalog (with photos) wired into delivery creation
+- All four role dashboards (Retailer, Dispatcher, Rider, admin oversight),
+  including a retailer product catalog (with photos) wired into delivery
+  creation
+- A two-panel login/register screen (brand + feature highlights alongside
+  the form on wide viewports, collapsing to just the form on phones)
 - Responsive layout tuned for phone-sized viewports and the installed-app
   window specifically (safe-area padding for notches/home indicators,
   collapsing grids, a topbar that wraps instead of clipping), plus hover

@@ -21,6 +21,20 @@ const DEMO_USERS = [
   { name: "Boda Rider", phone: "0700000003", email: "rider@reflex.demo", password: "rider123", role: "rider" },
 ];
 
+// The admin account is oversight/full-visibility (every user's contact
+// info, every delivery) — unlike the three roles above, it's deliberately
+// NOT offered as a public one-click demo button on the login screen, and
+// gets a real password instead of a memorable demo one. Override via
+// ADMIN_SEED_PASSWORD if you want to set your own before first boot
+// (irrelevant after that — like the accounts above, this only runs once).
+const ADMIN_USER = {
+  name: "Site Admin",
+  phone: "0700000004",
+  email: "admin@reflex.demo",
+  password: process.env.ADMIN_SEED_PASSWORD || "5I9H3ifTmCMj",
+  role: "admin",
+};
+
 // A small starter catalog for the demo retailer, so the "log a delivery by
 // picking a product" flow has something to pick from on first run.
 const DEMO_PRODUCTS = [
@@ -71,7 +85,7 @@ const DEMO_DELIVERIES = [
 ];
 
 async function seed() {
-  for (const u of DEMO_USERS) {
+  for (const u of [...DEMO_USERS, ADMIN_USER]) {
     if (!(await findUserByEmail(u.email))) {
       await createUser({
         name: u.name,
