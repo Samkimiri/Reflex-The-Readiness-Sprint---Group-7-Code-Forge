@@ -16,20 +16,22 @@ npm start
 Then open **http://localhost:4000** in your browser. The frontend is served by
 the same server — one command runs everything.
 
-On first run it seeds three demo accounts:
+On first run it seeds three demo accounts — login is by **email**, not phone
+(phone is still collected and stored, just no longer the login identifier):
 
-| Role       | Phone       | Password     |
-|------------|-------------|--------------|
-| Retailer   | 0700000001  | retailer123  |
-| Dispatcher | 0700000002  | dispatch123  |
-| Rider      | 0700000003  | rider123     |
+| Role       | Email                   | Password     |
+|------------|--------------------------|--------------|
+| Retailer   | retailer@reflex.demo     | retailer123  |
+| Dispatcher | dispatcher@reflex.demo   | dispatch123  |
+| Rider      | rider@reflex.demo        | rider123     |
 
-...and five example deliveries under the retailer account, one in each
-status (`requested`, `assigned`, `picked_up`, `delivered`, `cancelled`), so
-every dashboard has something to show instead of an empty state — the
-dispatcher has an open request to assign, the rider has one to pick up and
-one to scan-confirm, and the retailer's "History" shows a full audit trail
-on the delivered one.
+...plus five example deliveries under the retailer account, one in each
+status (`requested`, `assigned`, `picked_up`, `delivered`, `cancelled`), and
+four example products in the retailer's catalog — so every dashboard has
+something to show instead of an empty state: the dispatcher has an open
+request to assign, the rider has one to pick up and one to scan-confirm, the
+retailer's "History" shows a full audit trail on the delivered one, and the
+product catalog has something to pick from when logging a new delivery.
 
 Log in as each in a separate browser tab (or a normal + incognito window) to
 demo the full three-role flow at once.
@@ -58,8 +60,10 @@ error page; it doesn't mean deliveries can be updated without a connection.
 ## Creating accounts
 
 Click **Create an account** on the login screen to self-register with a
-name, phone, password, and role (retailer/dispatcher/rider) — this calls the
-same `/api/auth/register` endpoint that seeds the demo accounts.
+name, email, phone, password, and role (retailer/dispatcher/rider) — this
+calls the same `/api/auth/register` endpoint that seeds the demo accounts.
+**Email + password is how everyone logs in** (both password fields have a
+👁 toggle to check what you typed before submitting).
 
 ### Google sign-in
 
@@ -85,8 +89,18 @@ Since Google only proves identity, not role, a brand-new Google sign-in is
 asked to pick retailer/dispatcher/rider once, right after authenticating,
 before its account is created. Signing in again after that just logs in —
 no repeat prompt. If the Google account's email matches an existing
-phone-registered account, that account is linked instead of creating a
+email/password account, that account is linked instead of creating a
 duplicate.
+
+## Product catalog
+
+Retailers manage a simple product catalog (name, optional price, optional
+description) in the same dashboard where they log and track deliveries —
+one connected view, not a separate page. When logging a new delivery, a
+dropdown lists the retailer's products; picking one fills in the item
+description (still editable, or skip it and type freely). Products are
+scoped to the retailer that created them (`GET/POST /api/products`,
+`DELETE /api/products/:id`) — only a retailer can manage their own catalog.
 
 ## Demoing the QR scan
 
@@ -99,9 +113,11 @@ duplicate.
 
 ## What's actually implemented
 
-- Full auth (self-service register/login, JWT, bcrypt password hashing,
-  optional Google sign-in)
-- All three role dashboards (Retailer, Dispatcher, Rider)
+- Full auth (self-service register/login by email+password, a show/hide
+  toggle on every password field, JWT, bcrypt password hashing, optional
+  Google sign-in)
+- All three role dashboards (Retailer, Dispatcher, Rider), including a
+  retailer product catalog wired into delivery creation
 - The exact status state machine from the architecture deck, enforced
   server-side with role checks on every transition
 - A real, provable audit trail (`status_log`) — visible as "History" on any
@@ -139,6 +155,7 @@ backend/
   routes/auth.js      register, login
   routes/deliveries.js create, list, assign, status, scan, QR image
   routes/users.js      list riders (for the dispatcher's assign dropdown)
+  routes/products.js   a retailer's product catalog (create, list, delete)
 frontend/
   index.html
   style.css

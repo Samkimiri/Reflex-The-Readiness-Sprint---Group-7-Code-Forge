@@ -7,17 +7,27 @@ const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const {
   readDB,
-  findUserByPhone,
+  findUserByEmail,
   createUser,
   createDelivery,
   saveDelivery,
   addStatusLog,
+  createProduct,
 } = require("./db");
 
 const DEMO_USERS = [
-  { name: "Jane's Electronics (Retailer)", phone: "0700000001", password: "retailer123", role: "retailer" },
-  { name: "Dispatch Desk", phone: "0700000002", password: "dispatch123", role: "dispatcher" },
-  { name: "Boda Rider", phone: "0700000003", password: "rider123", role: "rider" },
+  { name: "Jane's Electronics (Retailer)", phone: "0700000001", email: "retailer@reflex.demo", password: "retailer123", role: "retailer" },
+  { name: "Dispatch Desk", phone: "0700000002", email: "dispatcher@reflex.demo", password: "dispatch123", role: "dispatcher" },
+  { name: "Boda Rider", phone: "0700000003", email: "rider@reflex.demo", password: "rider123", role: "rider" },
+];
+
+// A small starter catalog for the demo retailer, so the "log a delivery by
+// picking a product" flow has something to pick from on first run.
+const DEMO_PRODUCTS = [
+  { name: "Wireless earbuds", price: 2500, description: "Bluetooth 5.0, charging case included" },
+  { name: "Phone case", price: 600, description: "Silicone, various colors" },
+  { name: "Bluetooth speaker", price: 3200, description: "Portable, 10W, USB-C charging" },
+  { name: "65W laptop charger", price: 1800, description: "USB-C fast charging" },
 ];
 
 // One example delivery per status, so every screen (retailer, dispatcher,
@@ -62,22 +72,42 @@ const DEMO_DELIVERIES = [
 
 async function seed() {
   for (const u of DEMO_USERS) {
-    if (!(await findUserByPhone(u.phone))) {
-      await createUser({ name: u.name, phone: u.phone, password_hash: bcrypt.hashSync(u.password, 10), role: u.role });
-      console.log(`Seeded ${u.role}: ${u.phone} / ${u.password}`);
+    if (!(await findUserByEmail(u.email))) {
+      await createUser({
+        name: u.name,
+        phone: u.phone,
+        email: u.email,
+        password_hash: bcrypt.hashSync(u.password, 10),
+        role: u.role,
+      });
+      console.log(`Seeded ${u.role}: ${u.email} / ${u.password}`);
     }
   }
 
   await seedDeliveries();
+  await seedProducts();
+}
+
+async function seedProducts() {
+  const db = await readDB();
+  if (db.products.length > 0) return; // already seeded, or the retailer has real products now
+
+  const retailer = await findUserByEmail("retailer@reflex.demo");
+  if (!retailer) return;
+
+  for (const p of DEMO_PRODUCTS) {
+    await createProduct({ retailer_id: retailer.id, name: p.name, price: p.price, description: p.description });
+  }
+  console.log(`Seeded ${DEMO_PRODUCTS.length} example products.`);
 }
 
 async function seedDeliveries() {
   const db = await readDB();
   if (db.deliveries.length > 0) return; // already seeded, or the app has real data now
 
-  const retailer = await findUserByPhone("0700000001");
-  const dispatcher = await findUserByPhone("0700000002");
-  const rider = await findUserByPhone("0700000003");
+  const retailer = await findUserByEmail("retailer@reflex.demo");
+  const dispatcher = await findUserByEmail("dispatcher@reflex.demo");
+  const rider = await findUserByEmail("rider@reflex.demo");
   if (!retailer || !dispatcher || !rider) return; // demo users didn't seed for some reason
 
   for (const spec of DEMO_DELIVERIES) {

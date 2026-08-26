@@ -99,6 +99,27 @@ body {
 
 #login-form button:hover, #register-form button:hover { background: var(--teal-dark); }
 
+.password-field { position: relative; }
+.password-field input { padding-right: 42px; }
+
+#login-form .password-toggle, #register-form .password-toggle {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: auto;
+  margin: 0;
+  padding: 4px 8px;
+  background: none;
+  border: none;
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--muted);
+  opacity: 0.7;
+}
+#login-form .password-toggle:hover, #register-form .password-toggle:hover { background: none; opacity: 1; }
+
 .error { color: var(--cherry); font-size: 13px; margin-top: 10px; }
 
 #google-btn-wrap { margin-bottom: 4px; }
@@ -298,6 +319,14 @@ h2 { font-size: 20px; margin: 0 0 4px; }
 .status-cancelled { background: #f6d9dc; color: var(--cherry); }
 
 .empty-state { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
+
+.price-tag {
+  display: inline-block;
+  color: var(--teal-dark);
+  font-weight: 700;
+  font-size: 12px;
+  margin-left: 6px;
+}
 
 /* ---------- Modal ---------- */
 .modal-backdrop {

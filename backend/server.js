@@ -6,6 +6,7 @@ const { requireAuth } = require("./middleware/auth");
 const authRoutes = require("./routes/auth");
 const deliveryRoutes = require("./routes/deliveries");
 const userRoutes = require("./routes/users");
+const productRoutes = require("./routes/products");
 const { seed } = require("./seed");
 
 const app = express();
@@ -22,6 +23,7 @@ app.use((req, res, next) => {
 app.use("/api/auth", authRoutes);
 app.use("/api/deliveries", requireAuth, deliveryRoutes);
 app.use("/api/users", requireAuth, userRoutes);
+app.use("/api/products", requireAuth, productRoutes);
 
 // Serve the frontend (plain HTML/JS — no build step) from the same server.
 app.use(express.static(path.join(__dirname, "..", "frontend")));

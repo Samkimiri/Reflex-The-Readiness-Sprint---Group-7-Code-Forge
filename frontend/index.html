@@ -31,10 +31,13 @@
     </div>
 
     <form id="login-form">
-      <label>Phone</label>
-      <input type="text" id="login-phone" placeholder="0700000001" required />
+      <label>Email</label>
+      <input type="email" id="login-email" placeholder="you@example.com" required />
       <label>Password</label>
-      <input type="password" id="login-password" placeholder="••••••••" required />
+      <div class="password-field">
+        <input type="password" id="login-password" placeholder="••••••••" required />
+        <button type="button" class="password-toggle" data-toggle-for="login-password" aria-label="Show password">👁</button>
+      </div>
       <button type="submit">Log in</button>
       <p id="login-error" class="error"></p>
     </form>
@@ -42,12 +45,15 @@
     <form id="register-form" class="hidden">
       <label>Full name</label>
       <input type="text" name="name" required />
+      <label>Email</label>
+      <input type="email" name="email" required />
       <label>Phone</label>
       <input type="text" name="phone" required />
-      <label>Email (optional)</label>
-      <input type="email" name="email" />
       <label>Password</label>
-      <input type="password" name="password" required minlength="6" />
+      <div class="password-field">
+        <input type="password" name="password" id="register-password" required minlength="6" />
+        <button type="button" class="password-toggle" data-toggle-for="register-password" aria-label="Show password">👁</button>
+      </div>
       <label>I am a...</label>
       <select name="role" required>
         <option value="" disabled selected>Select role</option>
@@ -66,9 +72,9 @@
 
     <div class="demo-accounts" id="demo-accounts">
       <p class="demo-title">Demo accounts</p>
-      <button class="demo-btn" data-phone="0700000001" data-pass="retailer123">Retailer — 0700000001 / retailer123</button>
-      <button class="demo-btn" data-phone="0700000002" data-pass="dispatch123">Dispatcher — 0700000002 / dispatch123</button>
-      <button class="demo-btn" data-phone="0700000003" data-pass="rider123">Rider — 0700000003 / rider123</button>
+      <button class="demo-btn" data-email="retailer@reflex.demo" data-pass="retailer123">Retailer — retailer@reflex.demo / retailer123</button>
+      <button class="demo-btn" data-email="dispatcher@reflex.demo" data-pass="dispatch123">Dispatcher — dispatcher@reflex.demo / dispatch123</button>
+      <button class="demo-btn" data-email="rider@reflex.demo" data-pass="rider123">Rider — rider@reflex.demo / rider123</button>
     </div>
   </div>
 </div>

@@ -23,34 +23,36 @@ router.get("/config", (req, res) => {
 });
 
 router.post("/register", async (req, res) => {
-  const { name, phone, email, password, role } = req.body || {};
-  if (!name || !phone || !password || !role) {
-    return res.status(400).json({ error: "name, phone, password, and role are all required." });
+  const { name, phone, password, role } = req.body || {};
+  const email = normalizeEmail(req.body && req.body.email);
+  if (!name || !phone || !email || !password || !role) {
+    return res.status(400).json({ error: "name, phone, email, password, and role are all required." });
   }
   if (!ROLES.includes(role)) {
     return res.status(400).json({ error: `role must be one of: ${ROLES.join(", ")}` });
   }
+  if (await findUserByEmail(email)) {
+    return res.status(409).json({ error: "A user with that email already exists." });
+  }
   if (await findUserByPhone(phone)) {
     return res.status(409).json({ error: "A user with that phone number already exists." });
   }
-  if (email && (await findUserByEmail(email))) {
-    return res.status(409).json({ error: "A user with that email already exists." });
-  }
 
   const password_hash = bcrypt.hashSync(password, 10);
-  const user = await createUser({ name, phone, email: email || null, password_hash, role });
+  const user = await createUser({ name, phone, email, password_hash, role });
   const token = signToken(user);
 
   res.status(201).json({ token, user: publicUser(user) });
 });
 
 router.post("/login", async (req, res) => {
-  const { phone, password } = req.body || {};
-  if (!phone || !password) return res.status(400).json({ error: "phone and password are required." });
+  const email = normalizeEmail(req.body && req.body.email);
+  const { password } = req.body || {};
+  if (!email || !password) return res.status(400).json({ error: "email and password are required." });
 
-  const user = await findUserByPhone(phone);
+  const user = await findUserByEmail(email);
   if (!user || !user.password_hash || !bcrypt.compareSync(password, user.password_hash)) {
-    return res.status(401).json({ error: "Invalid phone or password." });
+    return res.status(401).json({ error: "Invalid email or password." });
   }
 
   const token = signToken(user);
@@ -84,11 +86,12 @@ router.post("/google", async (req, res) => {
     return res.status(401).json({ error: "Your Google account's email isn't verified." });
   }
 
+  const googleEmail = normalizeEmail(payload.email);
   let user = await findUserByGoogleId(payload.sub);
 
   if (!user) {
-    // Same email, no google_id yet (e.g. registered by phone earlier) — link it.
-    const existingByEmail = await findUserByEmail(payload.email);
+    // Same email, no google_id yet (e.g. registered by email/password earlier) — link it.
+    const existingByEmail = await findUserByEmail(googleEmail);
     if (existingByEmail) {
       existingByEmail.google_id = payload.sub;
       user = await saveUser(existingByEmail);
@@ -104,12 +107,16 @@ router.post("/google", async (req, res) => {
     if (!ROLES.includes(role)) {
       return res.status(400).json({ error: `role must be one of: ${ROLES.join(", ")}` });
     }
-    user = await createUser({ name: payload.name, email: payload.email, google_id: payload.sub, role });
+    user = await createUser({ name: payload.name, email: googleEmail, google_id: payload.sub, role });
   }
 
   const token = signToken(user);
   res.json({ token, user: publicUser(user) });
 });
+
+function normalizeEmail(email) {
+  return (email || "").trim().toLowerCase();
+}
 
 function signToken(user) {
   return jwt.sign({ id: user.id, role: user.role }, JWT_SECRET, { expiresIn: "12h" });

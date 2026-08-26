@@ -68,20 +68,20 @@ function toast(msg, isError = false) {
 // ---------- Auth ----------
 document.getElementById("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
-  const phone = document.getElementById("login-phone").value.trim();
+  const email = document.getElementById("login-email").value.trim();
   const password = document.getElementById("login-password").value;
-  await doLogin(phone, password);
+  await doLogin(email, password);
 });
 
 document.querySelectorAll(".demo-btn").forEach((btn) => {
-  btn.addEventListener("click", () => doLogin(btn.dataset.phone, btn.dataset.pass));
+  btn.addEventListener("click", () => doLogin(btn.dataset.email, btn.dataset.pass));
 });
 
-async function doLogin(phone, password) {
+async function doLogin(email, password) {
   const errEl = document.getElementById("login-error");
   errEl.textContent = "";
   try {
-    const { token, user } = await api("/auth/login", { method: "POST", body: { phone, password } });
+    const { token, user } = await api("/auth/login", { method: "POST", body: { email, password } });
     state.token = token;
     state.user = user;
     localStorage.setItem("reflex_token", token);
@@ -91,6 +91,17 @@ async function doLogin(phone, password) {
     errEl.textContent = e.message;
   }
 }
+
+// ---------- Password show/hide ----------
+document.querySelectorAll(".password-toggle").forEach((btn) => {
+  btn.addEventListener("click", () => {
+    const input = document.getElementById(btn.dataset.toggleFor);
+    const showing = input.type === "text";
+    input.type = showing ? "password" : "text";
+    btn.textContent = showing ? "👁" : "🙈";
+    btn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
+  });
+});
 
 // ---------- Register ----------
 document.getElementById("show-register-btn").addEventListener("click", () => setAuthMode("register"));
@@ -116,7 +127,6 @@ document.getElementById("register-form").addEventListener("submit", async (e) =>
   errEl.textContent = "";
   const fd = new FormData(e.target);
   const body = Object.fromEntries(fd);
-  if (!body.email) delete body.email;
   try {
     const { token, user } = await api("/auth/register", { method: "POST", body });
     state.token = token;
@@ -248,7 +258,10 @@ function fmtTime(iso) {
 
 // ================= RETAILER =================
 async function renderRetailer(root) {
-  const deliveries = await api("/deliveries").catch((e) => { toast(e.message, true); return []; });
+  const [deliveries, products] = await Promise.all([
+    api("/deliveries").catch((e) => { toast(e.message, true); return []; }),
+    api("/products").catch((e) => { toast(e.message, true); return []; }),
+  ]);
 
   root.innerHTML = `
     <h2>Retailer — Log &amp; Track Deliveries</h2>
@@ -260,9 +273,32 @@ async function renderRetailer(root) {
         <div><label>Customer name</label><input name="customer_name" required /></div>
         <div><label>Customer phone</label><input name="customer_phone" required /></div>
         <div class="full"><label>Delivery address</label><input name="address" required /></div>
+        <div class="full">
+          <label>Item ${products.length ? "(pick from your products, or type below)" : ""}</label>
+          ${products.length ? `
+            <select id="product-pick">
+              <option value="">— type manually below —</option>
+              ${products.map((p) => `<option value="${p.id}">${escapeHtml(p.name)}${p.price != null ? ` (KSh ${p.price})` : ""}</option>`).join("")}
+            </select>
+          ` : ""}
+        </div>
         <div class="full"><label>Item description</label><textarea name="item_description" rows="2" required></textarea></div>
         <div class="full"><button class="btn btn-primary" type="submit">Log delivery</button></div>
       </form>
+    </div>
+
+    <div class="panel">
+      <h3>Your products (${products.length})</h3>
+      <p class="subtitle" style="margin-bottom:14px;">What you sell — pick any of these when logging a delivery above.</p>
+      <form id="new-product-form" class="form-grid">
+        <div><label>Product name</label><input name="name" required /></div>
+        <div><label>Price (KSh, optional)</label><input name="price" type="number" min="0" step="1" /></div>
+        <div class="full"><label>Description (optional)</label><input name="description" /></div>
+        <div class="full"><button class="btn btn-secondary" type="submit">Add product</button></div>
+      </form>
+      <div class="delivery-list" style="margin-top:16px;">
+        ${products.length ? products.map(productCard).join("") : `<div class="empty-state">No products yet — add what you sell above.</div>`}
+      </div>
     </div>
 
     <div class="panel">
@@ -272,6 +308,15 @@ async function renderRetailer(root) {
       </div>
     </div>
   `;
+
+  const productPick = document.getElementById("product-pick");
+  if (productPick) {
+    productPick.addEventListener("change", () => {
+      const p = products.find((x) => String(x.id) === productPick.value);
+      const itemField = document.querySelector('#new-delivery-form [name="item_description"]');
+      if (p) itemField.value = p.name + (p.description ? ` — ${p.description}` : "");
+    });
+  }
 
   document.getElementById("new-delivery-form").addEventListener("submit", async (e) => {
     e.preventDefault();
@@ -285,11 +330,54 @@ async function renderRetailer(root) {
     }
   });
 
+  document.getElementById("new-product-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = Object.fromEntries(fd);
+    if (!body.price) delete body.price;
+    if (!body.description) delete body.description;
+    try {
+      await api("/products", { method: "POST", body });
+      toast("Product added.");
+      renderRetailer(root);
+    } catch (err) {
+      toast(err.message, true);
+    }
+  });
+
   root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr)));
   root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
   root.querySelectorAll("[data-cancel]").forEach((btn) =>
     btn.addEventListener("click", () => cancelDelivery(btn.dataset.cancel, () => renderRetailer(root)))
   );
+  root.querySelectorAll("[data-remove-product]").forEach((btn) =>
+    btn.addEventListener("click", () => removeProduct(btn.dataset.removeProduct, () => renderRetailer(root)))
+  );
+}
+
+function productCard(p) {
+  return `
+    <div class="delivery-card">
+      <div class="delivery-main">
+        <div class="delivery-title">${escapeHtml(p.name)}${p.price != null ? `<span class="price-tag">KSh ${p.price}</span>` : ""}</div>
+        ${p.description ? `<div class="delivery-sub">${escapeHtml(p.description)}</div>` : ""}
+      </div>
+      <div class="delivery-actions">
+        <button class="btn btn-danger btn-sm" data-remove-product="${p.id}">Remove</button>
+      </div>
+    </div>
+  `;
+}
+
+async function removeProduct(id, after) {
+  if (!confirm("Remove this product from your catalog?")) return;
+  try {
+    await api(`/products/${id}`, { method: "DELETE" });
+    toast("Product removed.");
+    after();
+  } catch (e) {
+    toast(e.message, true);
+  }
 }
 
 function retailerCard(d) {

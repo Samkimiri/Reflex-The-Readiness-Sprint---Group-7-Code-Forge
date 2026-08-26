@@ -7,12 +7,13 @@
 // anywhere with zero setup — no DB server to install.
 //
 // The shape mirrors the real schema from the architecture deck, extended
-// with email/google_id so an account can be created via Google sign-in
-// (which has no phone number) instead of just phone+password:
+// with email/google_id (an account can be created via Google sign-in,
+// which has no phone number) and a per-retailer product catalog:
 //   users        -> id, name, phone, email, google_id, password_hash, role, created_at
 //   deliveries   -> id, retailer_id, rider_id, customer_name, customer_phone,
 //                   address, item_description, status, qr_code, created_at, updated_at
 //   status_log   -> id, delivery_id, changed_by, old_status, new_status, changed_at
+//   products     -> id, retailer_id, name, price, description, created_at
 //
 // Swapping this for real Postgres later means replacing readDB/writeDB (and
 // the KV key) with SQL queries — the rest of the app (routes, state machine)
@@ -37,13 +38,31 @@ const DB_FILE = process.env.VERCEL
 const KV_KEY = "reflex_db";
 
 function emptyDB() {
-  return { users: [], deliveries: [], status_log: [], seq: { users: 0, deliveries: 0, status_log: 0 } };
+  return {
+    users: [],
+    deliveries: [],
+    status_log: [],
+    products: [],
+    seq: { users: 0, deliveries: 0, status_log: 0, products: 0 },
+  };
+}
+
+// Backfills fields added after some data may already have been written
+// (e.g. `products`, added later) so an older persisted blob doesn't crash
+// on the first read/write after a deploy.
+function withDefaults(data) {
+  const empty = emptyDB();
+  return {
+    ...empty,
+    ...data,
+    seq: { ...empty.seq, ...(data && data.seq) },
+  };
 }
 
 async function readDB() {
   if (kv) {
     const data = await kv.get(KV_KEY);
-    return data || emptyDB();
+    return withDefaults(data);
   }
   if (!fs.existsSync(DB_FILE)) {
     const empty = emptyDB();
@@ -53,7 +72,7 @@ async function readDB() {
     fs.writeFileSync(DB_FILE, JSON.stringify(empty, null, 2));
     return empty;
   }
-  return JSON.parse(fs.readFileSync(DB_FILE, "utf8"));
+  return withDefaults(JSON.parse(fs.readFileSync(DB_FILE, "utf8")));
 }
 
 async function writeDB(data) {
@@ -186,6 +205,41 @@ async function getStatusLog(delivery_id) {
     .sort((a, b) => new Date(a.changed_at) - new Date(b.changed_at));
 }
 
+// ---------- products (a retailer's catalog of what they sell) ----------
+async function createProduct({ retailer_id, name, price = null, description = null }) {
+  const db = await readDB();
+  const product = {
+    id: nextId(db, "products"),
+    retailer_id,
+    name,
+    price,
+    description,
+    created_at: new Date().toISOString(),
+  };
+  db.products.push(product);
+  await writeDB(db);
+  return product;
+}
+
+async function listProducts({ retailer_id } = {}) {
+  const db = await readDB();
+  return db.products.filter((p) => !retailer_id || p.retailer_id === Number(retailer_id));
+}
+
+async function getProductById(id) {
+  const db = await readDB();
+  return db.products.find((p) => p.id === Number(id)) || null;
+}
+
+async function deleteProduct(id) {
+  const db = await readDB();
+  const idx = db.products.findIndex((p) => p.id === Number(id));
+  if (idx === -1) return false;
+  db.products.splice(idx, 1);
+  await writeDB(db);
+  return true;
+}
+
 module.exports = {
   readDB,
   findUserByPhone,
@@ -199,5 +253,9 @@ module.exports = {
   listDeliveries,
   saveDelivery,
   addStatusLog,
+  createProduct,
+  listProducts,
+  getProductById,
+  deleteProduct,
   getStatusLog,
 };
