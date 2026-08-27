@@ -241,6 +241,15 @@ async function deleteProduct(id) {
   return true;
 }
 
+async function saveProduct(updated) {
+  const db = await readDB();
+  const idx = db.products.findIndex((p) => p.id === updated.id);
+  if (idx === -1) return null;
+  db.products[idx] = updated;
+  await writeDB(db);
+  return updated;
+}
+
 module.exports = {
   readDB,
   findUserByPhone,
@@ -258,5 +267,6 @@ module.exports = {
   listProducts,
   getProductById,
   deleteProduct,
+  saveProduct,
   getStatusLog,
 };

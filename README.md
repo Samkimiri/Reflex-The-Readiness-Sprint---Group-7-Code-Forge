@@ -136,13 +136,18 @@ retailer/dispatcher/rider; an admin account only ever comes from seeding.
 Retailers manage a simple product catalog (name, optional price, optional
 description, optional photo) in the same dashboard where they log and track
 deliveries — one connected view, not a separate page. Products render as a
-responsive card grid (photo/placeholder, name, price, description, remove
-button) rather than a plain list, and the "add a product" form lives behind
-a collapsible toggle so the catalog itself is the focus. When logging a new
-delivery, a dropdown lists the retailer's products; picking one fills in the
-item description (still editable, or skip it and type freely). Products are
-scoped to the retailer that created them (`GET/POST /api/products`,
-`DELETE /api/products/:id`) — only a retailer can manage their own catalog.
+responsive card grid (photo/placeholder, name, price, description, edit and
+remove buttons) rather than a plain list, 2 columns on phones with no
+horizontal overflow at any width down to 360px, and the "add a product"
+form lives behind a collapsible toggle so the catalog itself is the focus.
+Each card's **Edit** button opens the same style of form pre-filled with
+that product's current values — name, price, description, and photo are
+all independently editable after the fact, not just at creation. When
+logging a new delivery, a dropdown lists the retailer's products; picking
+one fills in the item description (still editable, or skip it and type
+freely). Products are scoped to the retailer that created them
+(`GET/POST /api/products`, `PATCH/DELETE /api/products/:id`) — only a
+retailer can manage their own catalog.
 
 Product photos are resized/re-encoded to a small JPEG **in the browser**
 before upload (max 480px, quality ~0.72) and stored as a data URL on the
@@ -151,6 +156,22 @@ data store is a JSON/Redis blob either way, so this keeps setup at zero —
 but it does mean payload size matters: the backend rejects anything over
 ~450KB decoded as a sanity check, well above what the client-side
 compression normally produces.
+
+## Profile editing
+
+Every retailer, dispatcher, and rider can edit their own name, phone
+number, and profile photo via the "👤 Profile" link in the topbar — a
+modal reachable from any view, not tied to a specific role's dashboard.
+The photo (compressed client-side the same way product photos are, just
+smaller — max 300px) shows as a small avatar next to the user's name in
+the topbar once set. `PATCH /api/users/me` deliberately excludes email,
+password, and role: those need extra verification (uniqueness checks,
+current-password confirmation, admin-only role changes) that's out of
+scope here — this covers "my name is misspelled" / "add a photo", not a
+full account-settings page. The admin account doesn't get this link —
+consistent with it already being excluded from self-registration and the
+public demo logins (see `backend/seed.js`), it's an oversight account,
+not a normal user profile.
 
 ## Demoing the QR scan
 
@@ -306,8 +327,9 @@ backend/
   middleware/auth.js  JWT verification
   routes/auth.js      register, login
   routes/deliveries.js create, list, assign, status, scan, QR image
-  routes/users.js      list riders (for the dispatcher's assign dropdown)
-  routes/products.js   a retailer's product catalog (create, list, delete)
+  routes/users.js      list riders (for the dispatcher's assign dropdown),
+                       self-service profile edit (PATCH /users/me)
+  routes/products.js   a retailer's product catalog (create, list, edit, delete)
 frontend/
   index.html
   style.css

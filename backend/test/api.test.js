@@ -305,3 +305,95 @@ test("only a dispatcher or admin can list users; a retailer/rider cannot", async
   assert.equal(status, 403);
   assert.match(data.error, /Not authorized/);
 });
+
+test("a retailer can edit their own product; another retailer cannot", async () => {
+  const suffix = Date.now();
+  const owner = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Prod Owner", phone: `0751${suffix % 1000000}`, email: `powner-${suffix}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+  const other = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Prod Other", phone: `0752${suffix % 1000000}`, email: `pother-${suffix}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+
+  const created = await api("/api/products", {
+    method: "POST",
+    token: owner.token,
+    body: { name: "Original Name", price: 100 },
+  });
+  assert.equal(created.status, 201);
+  const productId = created.data.id;
+
+  const badEdit = await api(`/api/products/${productId}`, {
+    method: "PATCH",
+    token: other.token,
+    body: { name: "Hijacked" },
+  });
+  assert.equal(badEdit.status, 403);
+
+  const goodEdit = await api(`/api/products/${productId}`, {
+    method: "PATCH",
+    token: owner.token,
+    body: { name: "Updated Name", price: 250, description: "Now with a description" },
+  });
+  assert.equal(goodEdit.status, 200);
+  assert.equal(goodEdit.data.name, "Updated Name");
+  assert.equal(goodEdit.data.price, 250);
+  assert.equal(goodEdit.data.description, "Now with a description");
+
+  const emptyName = await api(`/api/products/${productId}`, {
+    method: "PATCH",
+    token: owner.token,
+    body: { name: "   " },
+  });
+  assert.equal(emptyName.status, 400);
+});
+
+test("a user can edit their own profile; a duplicate phone is rejected", async () => {
+  const suffix = Date.now();
+  const userA = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Profile A", phone: `0761${suffix % 1000000}`, email: `profa-${suffix}@example.com`, password: "testpass1", role: "rider" },
+    })
+  ).data;
+  const userB = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Profile B", phone: `0762${suffix % 1000000}`, email: `profb-${suffix}@example.com`, password: "testpass1", role: "rider" },
+    })
+  ).data;
+
+  const edit = await api("/api/users/me", {
+    method: "PATCH",
+    token: userA.token,
+    body: { name: "Renamed A", image: "data:image/png;base64,AAAA" },
+  });
+  assert.equal(edit.status, 200);
+  assert.equal(edit.data.name, "Renamed A");
+  assert.equal(edit.data.image, "data:image/png;base64,AAAA");
+
+  // Persisted, not just echoed back
+  const relogin = await api("/api/auth/login", { method: "POST", body: { email: userA.user.email, password: "testpass1" } });
+  assert.equal(relogin.data.user.name, "Renamed A");
+  assert.equal(relogin.data.user.image, "data:image/png;base64,AAAA");
+
+  const dupePhone = await api("/api/users/me", {
+    method: "PATCH",
+    token: userB.token,
+    body: { phone: userA.user.phone },
+  });
+  assert.equal(dupePhone.status, 409);
+
+  const badImage = await api("/api/users/me", {
+    method: "PATCH",
+    token: userB.token,
+    body: { image: "not-a-data-url" },
+  });
+  assert.equal(badImage.status, 400);
+});

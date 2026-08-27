@@ -554,13 +554,93 @@ on("logout-btn", "click", () => {
   document.getElementById("login-screen")?.classList.remove("hidden");
 });
 
-function enterApp() {
-  document.getElementById("login-screen")?.classList.add("hidden");
-  document.getElementById("app-screen")?.classList.remove("hidden");
+on("profile-link", "click", () => openProfileModal());
+
+// Keeps the topbar's name/role/avatar in sync with state.user — called on
+// login and again right after a profile edit, so a changed name/photo
+// shows up immediately without a full page reload.
+function updateTopbarIdentity() {
   const whoName = document.getElementById("who-name");
   if (whoName) whoName.textContent = state.user.name;
   const whoRole = document.getElementById("who-role");
   if (whoRole) whoRole.textContent = state.user.role;
+  const avatar = document.getElementById("who-avatar");
+  if (avatar) {
+    if (state.user.image) {
+      avatar.src = state.user.image;
+      avatar.classList.remove("hidden");
+    } else {
+      avatar.classList.add("hidden");
+      avatar.removeAttribute("src");
+    }
+  }
+  // Admin is deliberately not a self-service account (see seed.js — no
+  // public demo login either) — same reasoning applies to profile editing.
+  const profileLink = document.getElementById("profile-link");
+  if (profileLink) profileLink.classList.toggle("hidden", state.user.role === "admin");
+}
+
+async function openProfileModal() {
+  const u = state.user;
+  const modal = openModal(`
+    <button class="modal-close" data-close>&times;</button>
+    <h3>My profile</h3>
+    <form id="edit-profile-form" class="form-grid">
+      <div class="full" style="text-align:center;">
+        <img id="profile-avatar-preview" class="avatar-preview-lg${u.image ? "" : " hidden"}" alt="" src="${u.image || ""}" />
+        <div class="image-picker" style="justify-content:center;margin-top:10px;">
+          <input type="file" id="profile-image-input" accept="image/*" />
+        </div>
+      </div>
+      <div class="full"><label>Name</label><input name="name" value="${escapeHtml(u.name)}" required /></div>
+      <div class="full"><label>Phone</label><input name="phone" value="${escapeHtml(u.phone || "")}" required /></div>
+      ${u.email ? `<div class="full"><label>Email</label><input value="${escapeHtml(u.email)}" disabled /></div>` : ""}
+      <div class="full"><button class="btn btn-primary" type="submit">Save changes</button></div>
+    </form>
+  `);
+  modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
+
+  let pendingImage; // undefined = untouched, string = new photo picked
+  const imageInput = modal.querySelector("#profile-image-input");
+  const imagePreview = modal.querySelector("#profile-avatar-preview");
+  imageInput.addEventListener("change", async () => {
+    const file = imageInput.files[0];
+    if (!file) return;
+    try {
+      pendingImage = await compressImageToDataUrl(file, 300, 0.8);
+      imagePreview.src = pendingImage;
+      imagePreview.classList.remove("hidden");
+    } catch (e) {
+      toast("Couldn't read that image — try a different file.", true);
+      imageInput.value = "";
+    }
+  });
+
+  modal.querySelector("#edit-profile-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = { name: fd.get("name"), phone: fd.get("phone") };
+    if (pendingImage !== undefined) body.image = pendingImage;
+    const btn = e.target.querySelector('button[type="submit"]');
+    await withLoading(btn, "Saving…", async () => {
+      try {
+        const updated = await api("/users/me", { method: "PATCH", body });
+        state.user = { ...state.user, ...updated };
+        localStorage.setItem("reflex_user", JSON.stringify(state.user));
+        updateTopbarIdentity();
+        toast("Profile updated.");
+        closeModal(modal);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  });
+}
+
+function enterApp() {
+  document.getElementById("login-screen")?.classList.add("hidden");
+  document.getElementById("app-screen")?.classList.remove("hidden");
+  updateTopbarIdentity();
   // Fresh per-session: without this, logging out and back in as a
   // different dispatcher/rider would diff against the previous user's
   // last-seen statuses and fire bogus "changed" toasts on first render.
@@ -885,6 +965,12 @@ async function renderRetailer(root) {
   root.querySelectorAll("[data-remove-product]").forEach((btn) =>
     btn.addEventListener("click", () => removeProduct(btn, btn.dataset.removeProduct, () => renderRetailer(root)))
   );
+  root.querySelectorAll("[data-edit-product]").forEach((btn) =>
+    btn.addEventListener("click", () => {
+      const product = products.find((x) => String(x.id) === btn.dataset.editProduct);
+      if (product) openEditProductModal(product, () => renderRetailer(root));
+    })
+  );
 
   document.getElementById("retailer-refresh")?.addEventListener("click", (e) => {
     withLoading(e.currentTarget, "Refreshing…", async () => {
@@ -905,9 +991,70 @@ function productCard(p) {
         ${p.price != null ? `<div class="product-card-price">KSh ${p.price}</div>` : ""}
         ${p.description ? `<div class="product-card-desc">${escapeHtml(p.description)}</div>` : ""}
       </div>
-      <button class="btn btn-danger btn-sm product-card-remove" data-remove-product="${p.id}">Remove</button>
+      <div class="product-card-actions">
+        <button class="btn btn-secondary btn-sm" data-edit-product="${p.id}">Edit</button>
+        <button class="btn btn-danger btn-sm" data-remove-product="${p.id}">Remove</button>
+      </div>
     </div>
   `;
+}
+
+async function openEditProductModal(p, after) {
+  const modal = openModal(`
+    <button class="modal-close" data-close>&times;</button>
+    <h3>Edit product</h3>
+    <form id="edit-product-form" class="form-grid">
+      <div class="full"><label>Product name</label><input name="name" value="${escapeHtml(p.name)}" required /></div>
+      <div><label>Price (KSh, optional)</label><input name="price" type="number" min="0" step="1" value="${p.price != null ? p.price : ""}" /></div>
+      <div class="full"><label>Description (optional)</label><input name="description" value="${escapeHtml(p.description || "")}" /></div>
+      <div class="full">
+        <label>Photo (optional)</label>
+        <div class="image-picker">
+          <img id="edit-product-image-preview" class="image-preview${p.image ? "" : " hidden"}" alt="" src="${p.image || ""}" />
+          <input type="file" name="imageFile" id="edit-product-image-input" accept="image/*" />
+        </div>
+      </div>
+      <div class="full"><button class="btn btn-primary" type="submit">Save changes</button></div>
+    </form>
+  `);
+  modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
+
+  // undefined = photo untouched (don't send it), a string = a new photo was picked.
+  let pendingImage;
+  const imageInput = modal.querySelector("#edit-product-image-input");
+  const imagePreview = modal.querySelector("#edit-product-image-preview");
+  imageInput.addEventListener("change", async () => {
+    const file = imageInput.files[0];
+    if (!file) return;
+    try {
+      pendingImage = await compressImageToDataUrl(file);
+      imagePreview.src = pendingImage;
+      imagePreview.classList.remove("hidden");
+    } catch (e) {
+      toast("Couldn't read that image — try a different file.", true);
+      imageInput.value = "";
+    }
+  });
+
+  modal.querySelector("#edit-product-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const body = { name: fd.get("name"), description: fd.get("description") || "" };
+    const price = fd.get("price");
+    body.price = price === "" ? "" : price;
+    if (pendingImage !== undefined) body.image = pendingImage;
+    const btn = e.target.querySelector('button[type="submit"]');
+    await withLoading(btn, "Saving…", async () => {
+      try {
+        await api(`/products/${p.id}`, { method: "PATCH", body });
+        toast("Product updated.");
+        closeModal(modal);
+        after();
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  });
 }
 
 // Resizes+recompresses an image client-side before it's stored as a data

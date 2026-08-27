@@ -1,5 +1,5 @@
 const express = require("express");
-const { createProduct, listProducts, getProductById, deleteProduct } = require("../db");
+const { createProduct, listProducts, getProductById, deleteProduct, saveProduct } = require("../db");
 
 const router = express.Router();
 
@@ -53,6 +53,57 @@ router.post("/", async (req, res) => {
     image: parsedImage,
   });
   res.status(201).json(product);
+});
+
+// PATCH /api/products/:id  (retailer only, own product)  { name?, price?, description?, image? }
+// Every field is optional and only touched if present in the body, so the
+// frontend can send just what changed rather than the whole product.
+router.patch("/:id", async (req, res) => {
+  const product = await getProductById(req.params.id);
+  if (!product) return res.status(404).json({ error: "Product not found." });
+  if (req.user.role !== "retailer" || product.retailer_id !== req.user.id) {
+    return res.status(403).json({ error: "You can only edit your own products." });
+  }
+
+  const { name, price, description, image } = req.body || {};
+
+  if (name !== undefined) {
+    if (!name || !name.trim()) return res.status(400).json({ error: "name is required." });
+    product.name = name.trim();
+  }
+
+  if (price !== undefined) {
+    if (price === null || price === "") {
+      product.price = null;
+    } else {
+      const parsedPrice = Number(price);
+      if (!Number.isFinite(parsedPrice) || parsedPrice < 0) {
+        return res.status(400).json({ error: "price must be a non-negative number." });
+      }
+      product.price = parsedPrice;
+    }
+  }
+
+  if (description !== undefined) {
+    product.description = description ? description.trim() : null;
+  }
+
+  if (image !== undefined) {
+    if (image === null || image === "") {
+      product.image = null;
+    } else {
+      if (typeof image !== "string" || !image.startsWith("data:image/")) {
+        return res.status(400).json({ error: "image must be an image data URL." });
+      }
+      if (image.length > MAX_IMAGE_DATA_URL_LENGTH) {
+        return res.status(400).json({ error: "Image is too large — try a smaller photo." });
+      }
+      product.image = image;
+    }
+  }
+
+  const saved = await saveProduct(product);
+  res.json(saved);
 });
 
 // DELETE /api/products/:id  (retailer only, own product)

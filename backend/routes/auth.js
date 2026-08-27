@@ -132,7 +132,7 @@ function signToken(user) {
 }
 
 function publicUser(u) {
-  return { id: u.id, name: u.name, phone: u.phone, email: u.email || null, role: u.role };
+  return { id: u.id, name: u.name, phone: u.phone, email: u.email || null, role: u.role, image: u.image || null };
 }
 
 module.exports = router;

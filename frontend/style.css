@@ -402,6 +402,14 @@ body {
 
 .who { display: flex; align-items: center; gap: 12px; font-size: 13px; flex-wrap: wrap; }
 
+.who-avatar {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 1px solid rgba(255,255,255,0.35);
+}
+
 .role-badge {
   background: var(--teal);
   padding: 3px 10px;
@@ -702,6 +710,15 @@ h2 { font-size: 20px; margin: 0 0 4px; }
   flex-shrink: 0;
 }
 
+.avatar-preview-lg {
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  object-fit: cover;
+  border: 2px solid var(--border);
+  display: inline-block;
+}
+
 /* ---------- Retailer product catalog ---------- */
 .product-panel-head { margin-bottom: 14px; }
 .product-panel-head h3 { margin-bottom: 4px; }
@@ -758,10 +775,12 @@ h2 { font-size: 20px; margin: 0 0 4px; }
 .product-card-price { color: var(--teal-dark); font-weight: 700; font-size: 12px; margin-top: 3px; }
 .product-card-desc { color: var(--muted); font-size: 11px; margin-top: 5px; line-height: 1.4; }
 
-.product-card-remove {
+.product-card-actions {
+  display: flex;
+  gap: 8px;
   margin: 0 12px 12px;
-  align-self: stretch;
 }
+.product-card-actions .btn { flex: 1; }
 
 /* ---------- Modal ---------- */
 @keyframes backdropIn { from { opacity: 0; } to { opacity: 1; } }
