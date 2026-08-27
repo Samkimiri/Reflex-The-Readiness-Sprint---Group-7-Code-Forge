@@ -408,8 +408,20 @@ function enterApp() {
   render();
   clearInterval(state.pollTimer);
   // Polling refresh — see trade-off log: simplest way to keep views current
-  // without building websocket infrastructure in a one-week sprint.
-  state.pollTimer = setInterval(render, 4000);
+  // without building websocket infrastructure in a one-week sprint. Not for
+  // the retailer, though: their view is a multi-field form (customer name,
+  // phone, address, item description) that takes more than 4s to fill out
+  // for a real person, and a poll tick does a full re-render — replacing
+  // the form's HTML mid-type, wiping whatever they'd typed, and silently
+  // detaching the submit button they'd meant to click. That's exactly what
+  // "nothing happens when I try to log a delivery" looks like from the
+  // outside. The retailer view already re-renders after every action it
+  // takes (create/cancel/add product), so it doesn't go stale — it just
+  // doesn't yank itself out from under someone mid-form. A manual refresh
+  // button covers the rest.
+  if (state.user.role !== "retailer") {
+    state.pollTimer = setInterval(render, 4000);
+  }
 }
 
 // ---------- Router by role ----------
@@ -448,8 +460,11 @@ async function renderRetailer(root) {
   ]);
 
   setViewHTML(root, `
-    <h2>Retailer — Log &amp; Track Deliveries</h2>
-    <p class="subtitle">Every delivery you log, and where it stands right now.</p>
+    <div class="view-heading-row">
+      <div><h2>Retailer — Log &amp; Track Deliveries</h2>
+      <p class="subtitle">Every delivery you log, and where it stands right now.</p></div>
+      <button class="btn btn-secondary btn-sm" id="retailer-refresh" type="button">🔄 Refresh</button>
+    </div>
 
     <div class="panel">
       <h3>New delivery request</h3>
@@ -570,6 +585,12 @@ async function renderRetailer(root) {
   root.querySelectorAll("[data-remove-product]").forEach((btn) =>
     btn.addEventListener("click", () => removeProduct(btn, btn.dataset.removeProduct, () => renderRetailer(root)))
   );
+
+  document.getElementById("retailer-refresh")?.addEventListener("click", (e) => {
+    withLoading(e.currentTarget, "Refreshing…", async () => {
+      renderRetailer(root);
+    });
+  });
 }
 
 function productCard(p) {

@@ -427,6 +427,16 @@ main { max-width: 980px; margin: 0 auto; padding: 28px 20px 60px; }
 h2 { font-size: 20px; margin: 0 0 4px; }
 .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 22px; }
 
+.view-heading-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+.view-heading-row h2 { margin-bottom: 4px; }
+.view-heading-row .subtitle { margin-bottom: 0; }
+
 /* ---------- Cards / tables ---------- */
 .panel {
   background: var(--white);
