@@ -31,6 +31,147 @@ async function api(path, { method = "GET", body } = {}) {
   return data;
 }
 
+// ---------- Offline queue (IndexedDB) ----------
+// Lets the retailer log a delivery or add a product while offline instead
+// of just failing — the request is saved locally and replayed once the
+// connection is back, so the "install as an app" pitch holds up even with
+// a flaky connection, not just when the wifi's good. Scoped to the
+// currently logged-in user (userId on every record) so a shared/demo
+// browser switching between retailer accounts never replays one
+// retailer's queued items under another's token.
+const OFFLINE_DB_NAME = "reflex-offline";
+const OFFLINE_STORE = "queue";
+
+function openOfflineDB() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(OFFLINE_DB_NAME, 1);
+    req.onupgradeneeded = () => {
+      req.result.createObjectStore(OFFLINE_STORE, { keyPath: "id", autoIncrement: true });
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function queueOfflineRequest(path, body) {
+  const db = await openOfflineDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OFFLINE_STORE, "readwrite");
+    tx.objectStore(OFFLINE_STORE).add({ path, body, userId: state.user.id, queuedAt: new Date().toISOString() });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+async function getQueuedRequests() {
+  if (!state.user) return [];
+  const db = await openOfflineDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OFFLINE_STORE, "readonly");
+    const req = tx.objectStore(OFFLINE_STORE).getAll();
+    req.onsuccess = () => resolve((req.result || []).filter((item) => item.userId === state.user.id));
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function removeQueuedRequest(id) {
+  const db = await openOfflineDB();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(OFFLINE_STORE, "readwrite");
+    tx.objectStore(OFFLINE_STORE).delete(id);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+let offlineFlushInFlight = false;
+// Replays queued requests in the order they were made (not in parallel —
+// a queued product should exist before a queued delivery that references
+// it by name gets replayed). Stops at the first failure and leaves the
+// rest queued rather than guessing whether it's still offline or a real
+// validation error; either way the next trigger (another 'online' event,
+// or the next time the retailer view loads) tries again from the front.
+async function flushOfflineQueue() {
+  if (offlineFlushInFlight || !state.token || !window.indexedDB) return;
+  offlineFlushInFlight = true;
+  try {
+    const items = await getQueuedRequests().catch(() => []);
+    if (!items.length) return;
+    let synced = 0;
+    for (const item of items) {
+      try {
+        await api(item.path, { method: "POST", body: item.body });
+        await removeQueuedRequest(item.id);
+        synced++;
+      } catch (e) {
+        break;
+      }
+    }
+    if (synced > 0) {
+      toast(`Synced ${synced} queued item${synced === 1 ? "" : "s"} from earlier.`);
+      if (state.user && state.user.role === "retailer") render({ skeleton: false });
+    }
+  } finally {
+    offlineFlushInFlight = false;
+  }
+}
+
+window.addEventListener("online", flushOfflineQueue);
+
+// Tries a POST normally; if the browser is (or turns out to be) offline,
+// queues it instead of losing what was typed. `navigator.onLine` is
+// checked upfront to skip a doomed request outright when it's already
+// known, but it isn't fully reliable (some setups report "online" without
+// real connectivity), so a TypeError from fetch() itself — as opposed to
+// an Error the server deliberately returned for a validation failure — is
+// treated as the authoritative "actually offline" signal. Returns "sent"
+// or "queued" so the caller can decide how to update the view: a full
+// re-render makes sense after a real POST, but re-fetching the delivery
+// and product lists right after finding out we're offline would just
+// fail the same way and bury the "saved for later" toast under a raw
+// fetch-error one.
+async function submitOrQueue(path, body, { successMsg, offlineMsg }) {
+  if (!navigator.onLine) {
+    await queueOfflineRequest(path, body);
+    toast(offlineMsg);
+    return "queued";
+  }
+  try {
+    await api(path, { method: "POST", body });
+    toast(successMsg);
+    return "sent";
+  } catch (err) {
+    if (err instanceof TypeError) {
+      await queueOfflineRequest(path, body);
+      toast(offlineMsg);
+      return "queued";
+    }
+    throw err;
+  }
+}
+
+// Patches just the pending-sync badge in place from IndexedDB (no network
+// call), used after queueing something while offline so the retailer sees
+// the count update without the rest of the view flickering through an
+// empty state while it waits on a fetch that's guaranteed to fail.
+async function refreshPendingBadge(root) {
+  const queued = await getQueuedRequests().catch(() => []);
+  const actions = root.querySelector(".view-heading-actions");
+  if (!actions) return;
+  let badge = actions.querySelector(".pending-badge");
+  if (queued.length) {
+    if (!badge) {
+      badge = document.createElement("span");
+      badge.className = "pending-badge";
+      badge.title = "Will send automatically once you're back online";
+      actions.insertBefore(badge, actions.firstChild);
+    }
+    badge.textContent = `⏳ ${queued.length} pending sync`;
+  } else if (badge) {
+    badge.remove();
+  }
+}
+
 function waitFor(check, timeoutMs) {
   return new Promise((resolve) => {
     const start = Date.now();
@@ -426,6 +567,10 @@ function enterApp() {
   state.filters = { dispatcher: { search: "", status: "" }, rider: { search: "", status: "" } };
   state.snapshots = { dispatcher: null, rider: null };
   render();
+  // Catches items queued in a previous session that ended while still
+  // offline (tab closed, app killed) — by the time this login happens,
+  // connectivity may already be back with no 'online' event left to fire.
+  flushOfflineQueue();
   clearInterval(state.pollTimer);
   // Polling refresh — see trade-off log: simplest way to keep views current
   // without building websocket infrastructure in a one-week sprint. Not for
@@ -440,18 +585,48 @@ function enterApp() {
   // doesn't yank itself out from under someone mid-form. A manual refresh
   // button covers the rest.
   if (state.user.role !== "retailer") {
-    state.pollTimer = setInterval(render, 5000);
+    // skeleton:false — a skeleton flashing over live data every 5s would
+    // be more distracting than the brief blank moment it's meant to fix;
+    // it's only useful for the "nothing on screen yet" case below.
+    state.pollTimer = setInterval(() => render({ skeleton: false }), 5000);
   }
 }
 
 // ---------- Router by role ----------
-function render() {
+function render(opts = {}) {
   const root = document.getElementById("view-root");
   if (!root) return console.warn("Reflex: #view-root not found — hard-refresh to fix.");
+  if (opts.skeleton !== false) showSkeleton(root, state.user.role);
   if (state.user.role === "retailer") return renderRetailer(root);
   if (state.user.role === "dispatcher") return renderDispatcher(root);
   if (state.user.role === "rider") return renderRider(root);
   if (state.user.role === "admin") return renderAdmin(root);
+}
+
+// Shimmer placeholder shown the moment a role's view starts loading (first
+// render after login, or a manual full re-render), so switching views reads
+// as "content is arriving" instead of a blank panel for however long the
+// fetch takes. Shaped roughly like each role's real layout so the swap-in
+// doesn't jump around. Not used on poll ticks — see the setInterval call
+// above.
+function showSkeleton(root, role) {
+  const line = (cls) => `<div class="skeleton-line ${cls}"></div>`;
+  const cards = (n) => Array.from({ length: n }, () => `<div class="skeleton-card"></div>`).join("");
+  const statRow = `<div class="stat-grid">${Array.from({ length: 3 }, () => `<div class="skeleton-stat"></div>`).join("")}</div>`;
+  const panel = (bodyHtml) => `<div class="panel skeleton-panel">${line("skeleton-line-title")}${bodyHtml}</div>`;
+
+  let body = "";
+  if (role === "retailer") {
+    body = panel(statRow) + panel(cards(1)) + panel(cards(3)) + panel(cards(3));
+  } else if (role === "dispatcher") {
+    body = panel(cards(2)) + panel(cards(2));
+  } else if (role === "rider") {
+    body = panel(cards(2));
+  } else if (role === "admin") {
+    body = panel(statRow) + panel(cards(3));
+  }
+
+  root.innerHTML = `${line("skeleton-line-heading")}${line("skeleton-line-subtitle")}${body}`;
 }
 
 // Restarts the CSS fade-in animation on every re-render (forcing a reflow
@@ -537,10 +712,15 @@ function diffAndToastChanges(role, items, { silent = false } = {}) {
 
 // ================= RETAILER =================
 async function renderRetailer(root) {
-  const [deliveries, products] = await Promise.all([
+  const [deliveries, products, queued] = await Promise.all([
     api("/deliveries").catch((e) => { toast(e.message, true); return []; }),
     api("/products").catch((e) => { toast(e.message, true); return []; }),
+    getQueuedRequests().catch(() => []),
   ]);
+  // Opportunistic: covers the case where connectivity came back without a
+  // reliable 'online' event (some browsers/OSes are inconsistent about
+  // firing it). Runs in the background — doesn't block this render.
+  flushOfflineQueue();
 
   const stats = computeRetailerStats(deliveries);
 
@@ -549,7 +729,10 @@ async function renderRetailer(root) {
     <div class="view-heading-row">
       <div><h2>Retailer — Log &amp; Track Deliveries</h2>
       <p class="subtitle">Every delivery you log, and where it stands right now.</p></div>
-      <button class="btn btn-secondary btn-sm" id="retailer-refresh" type="button">🔄 Refresh</button>
+      <div class="view-heading-actions">
+        ${queued.length ? `<span class="pending-badge" title="Will send automatically once you're back online">⏳ ${queued.length} pending sync</span>` : ""}
+        <button class="btn btn-secondary btn-sm" id="retailer-refresh" type="button">🔄 Refresh</button>
+      </div>
     </div>
 
     <div class="panel">
@@ -649,9 +832,16 @@ async function renderRetailer(root) {
     const btn = e.target.querySelector('button[type="submit"]');
     await withLoading(btn, "Logging…", async () => {
       try {
-        await api("/deliveries", { method: "POST", body: Object.fromEntries(fd) });
-        toast("Delivery logged.");
-        renderRetailer(root);
+        const result = await submitOrQueue("/deliveries", Object.fromEntries(fd), {
+          successMsg: "Delivery logged.",
+          offlineMsg: "You're offline — this delivery will send automatically once you're back online.",
+        });
+        if (result === "sent") {
+          renderRetailer(root);
+        } else {
+          e.target.reset();
+          refreshPendingBadge(root);
+        }
       } catch (err) {
         toast(err.message, true);
       }
@@ -669,9 +859,18 @@ async function renderRetailer(root) {
     const btn = e.target.querySelector('button[type="submit"]');
     await withLoading(btn, "Adding…", async () => {
       try {
-        await api("/products", { method: "POST", body });
-        toast("Product added.");
-        renderRetailer(root);
+        const result = await submitOrQueue("/products", body, {
+          successMsg: "Product added.",
+          offlineMsg: "You're offline — this product will be added automatically once you're back online.",
+        });
+        if (result === "sent") {
+          renderRetailer(root);
+        } else {
+          e.target.reset();
+          pendingProductImage = null;
+          imagePreview?.classList.add("hidden");
+          refreshPendingBadge(root);
+        }
       } catch (err) {
         toast(err.message, true);
       }
@@ -1154,11 +1353,16 @@ function closeModal(backdrop) {
 }
 
 async function openQrModal(id) {
+  // Feature-detected, not just hidden by CSS: most desktop browsers don't
+  // implement the Web Share API at all, so the button is left out of the
+  // markup entirely on those rather than rendered disabled/dead.
+  const canShare = typeof navigator.share === "function";
   const modal = openModal(`
     <button class="modal-close" data-close>&times;</button>
     <h3>Delivery QR Code</h3>
     <p style="font-size:13px;color:var(--muted)">Show this to the rider at drop-off. It's what turns "delivered" from a claim into proof.</p>
     <img class="qr-img" width="220" height="220" alt="Delivery QR code" />
+    ${canShare ? `<button class="btn btn-secondary qr-share-btn" id="qr-share-btn" type="button" disabled>📤 Share</button>` : ""}
   `);
   modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
 
@@ -1169,14 +1373,40 @@ async function openQrModal(id) {
       headers: { Authorization: "Bearer " + state.token },
     });
     if (!res.ok) throw new Error("Could not load QR code.");
-    const blobUrl = URL.createObjectURL(await res.blob());
+    const blob = await res.blob();
+    const blobUrl = URL.createObjectURL(blob);
     const img = modal.querySelector(".qr-img");
     if (!img) { URL.revokeObjectURL(blobUrl); return; } // modal closed before fetch resolved
     img.src = blobUrl;
     img.dataset.blobUrl = blobUrl;
+
+    const shareBtn = modal.querySelector("#qr-share-btn");
+    if (shareBtn) {
+      shareBtn.disabled = false;
+      shareBtn.addEventListener("click", () => shareQrCode(blob, id, shareBtn));
+    }
   } catch (e) {
     toast(e.message, true);
   }
+}
+
+// Shares the QR code straight to whatever the OS share sheet offers
+// (WhatsApp, SMS, AirDrop, etc.) instead of making the retailer save the
+// image and attach it manually. Falls back to a text-only share if the
+// browser supports navigator.share but not sharing files (canShare with
+// files is the newer, less universally-supported half of the API).
+async function shareQrCode(blob, deliveryId, btn) {
+  await withLoading(btn, "Sharing…", async () => {
+    try {
+      const file = new File([blob], `reflex-delivery-${deliveryId}-qr.png`, { type: blob.type || "image/png" });
+      const shareData = (navigator.canShare && navigator.canShare({ files: [file] }))
+        ? { files: [file], title: "Reflex delivery QR code", text: "Scan this to confirm the delivery." }
+        : { title: "Reflex delivery QR code", text: "Scan this to confirm the delivery." };
+      await navigator.share(shareData);
+    } catch (e) {
+      if (e.name !== "AbortError") toast("Couldn't share — try saving the image instead.", true); // AbortError = user just closed the share sheet, not a real failure
+    }
+  });
 }
 
 async function openHistoryModal(id) {

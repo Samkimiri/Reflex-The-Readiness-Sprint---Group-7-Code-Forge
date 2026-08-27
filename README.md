@@ -258,6 +258,25 @@ compression normally produces.
 - Retailer "at a glance" stats (deliveries in the last 7 days, average
   time from logged to delivered, cancellation rate) computed client-side
   from the retailer's own delivery history — no extra API calls
+- Skeleton loading placeholders shaped like each role's real layout,
+  shown the moment a view starts loading (first render after login, or a
+  manual full re-render) so switching roles reads as "content is
+  arriving" instead of a blank panel. Not shown on poll ticks — the
+  existing content stays put until the new content is ready, no flicker
+- A native Web Share button (📤) on the retailer's "Show QR" modal —
+  feature-detected, so it only appears in browsers that actually support
+  `navigator.share` (mainly mobile). Shares the QR straight to whatever
+  the OS share sheet offers (WhatsApp, SMS, AirDrop, etc.) instead of
+  requiring a screenshot-and-attach
+- Offline queueing for the retailer's two write actions (log a delivery,
+  add a product): if the request can't reach the server, it's saved to
+  IndexedDB instead of failing, the form resets, and a "⏳ N pending
+  sync" badge appears next to the refresh button. Replay is triggered by
+  the browser's `online` event and, as a backstop, opportunistically on
+  every retailer view load — not the Background Sync API, which only
+  Chromium supports; the `online` event works everywhere, including
+  Safari/iOS, which matters more here than replaying while the tab is
+  fully closed
 
 ## Architecture notes / where this differs from the original design doc
 

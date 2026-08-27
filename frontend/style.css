@@ -437,6 +437,24 @@ h2 { font-size: 20px; margin: 0 0 4px; }
 .view-heading-row h2 { margin-bottom: 4px; }
 .view-heading-row .subtitle { margin-bottom: 0; }
 
+.view-heading-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.pending-badge {
+  display: inline-block;
+  padding: 5px 12px;
+  border-radius: 20px;
+  font-size: 11px;
+  font-weight: 700;
+  background: #fdeecb;
+  color: #8a5a00;
+  white-space: nowrap;
+}
+
 .filter-bar {
   display: flex;
   gap: 10px;
@@ -775,6 +793,9 @@ h2 { font-size: 20px; margin: 0 0 4px; }
 
 .qr-img { display: block; margin: 14px auto; border: 8px solid var(--bg); border-radius: 8px; }
 
+.qr-share-btn { display: block; width: 100%; }
+.qr-share-btn:disabled { opacity: 0.6; cursor: default; }
+
 /* ---------- "How it works" guide ---------- */
 .guide-intro { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 4px 0 20px; }
 
@@ -874,6 +895,27 @@ video#scan-video { width: 100%; border-radius: 8px; background: #000; }
   to { opacity: 1; transform: none; }
 }
 .view-fade-in { animation: viewFadeIn 0.25s ease; }
+
+/* ---------- Skeleton loading ---------- */
+@keyframes skeletonShimmer {
+  0% { background-position: -300px 0; }
+  100% { background-position: calc(300px + 100%) 0; }
+}
+
+.skeleton-line, .skeleton-card, .skeleton-stat {
+  background: linear-gradient(90deg, var(--border) 25%, #eef3f3 37%, var(--border) 63%);
+  background-size: 300px 100%;
+  animation: skeletonShimmer 1.4s ease infinite;
+  border-radius: 8px;
+}
+
+.skeleton-line-heading { height: 22px; width: 240px; margin-bottom: 8px; }
+.skeleton-line-subtitle { height: 13px; width: 320px; margin-bottom: 22px; }
+.skeleton-line-title { height: 15px; width: 140px; margin-bottom: 14px; }
+.skeleton-card { height: 64px; border-radius: 10px; margin-bottom: 10px; }
+.skeleton-card:last-child { margin-bottom: 0; }
+.skeleton-stat { height: 74px; border-radius: 10px; }
+.skeleton-panel .stat-grid { margin: 0; }
 
 /* ---------- Responsive: phones, and the installed-app window ---------- */
 @media (max-width: 640px) {
