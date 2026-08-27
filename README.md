@@ -210,6 +210,13 @@ compression normally produces.
   window specifically (safe-area padding for notches/home indicators,
   collapsing grids, a topbar that wraps instead of clipping), plus hover
   and transition polish (`prefers-reduced-motion` respected)
+- The retailer view specifically gets 44px-minimum touch targets on every
+  button/select on mobile (the shared `.btn`/`.btn-sm` sizing is mouse-
+  first and runs 26-33px tall by default — fine with a cursor, fiddly
+  with a thumb) and 16px form text (below that, iOS Safari zooms the
+  whole page in on focus, hiding the rest of the view until the user
+  zooms back out). Scoped to a `.retailer-view` wrapper so dispatcher/
+  rider/admin, which reuse the same component classes, are unaffected
 - Backend response compression (gzip) and long-lived caching for static
   icons, so repeat loads are cheap on mobile connections
 - An in-app "How Reflex works" guide (✨ link on the login screen) — a

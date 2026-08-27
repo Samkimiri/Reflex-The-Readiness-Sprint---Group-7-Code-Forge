@@ -898,6 +898,27 @@ video#scan-video { width: 100%; border-radius: 8px; background: #000; }
   .modal { padding: 20px; }
 
   h2 { font-size: 18px; }
+
+  /* Retailer view: bigger touch targets (44px is the accepted minimum —
+     the default .btn-sm/.btn sizing is mouse-first and runs 26-33px tall,
+     fine with a cursor but fiddly with a thumb) and 16px form text (below
+     that, iOS Safari zooms the whole page in on focus, which then hides
+     the rest of the view until the user manually zooms back out — the
+     opposite of "everything visible"). Scoped to .retailer-view instead
+     of the shared .btn/.form-grid rules so dispatcher/rider/admin, which
+     reuse the same classes, are unaffected. */
+  .retailer-view .btn {
+    min-height: 44px;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .retailer-view .form-grid input,
+  .retailer-view .form-grid textarea,
+  .retailer-view select {
+    font-size: 16px;
+  }
+  .retailer-view select { min-height: 44px; }
 }
 
 @media (max-width: 400px) {

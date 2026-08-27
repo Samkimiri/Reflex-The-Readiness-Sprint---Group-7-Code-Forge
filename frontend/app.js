@@ -545,6 +545,7 @@ async function renderRetailer(root) {
   const stats = computeRetailerStats(deliveries);
 
   setViewHTML(root, `
+    <div class="retailer-view">
     <div class="view-heading-row">
       <div><h2>Retailer — Log &amp; Track Deliveries</h2>
       <p class="subtitle">Every delivery you log, and where it stands right now.</p></div>
@@ -611,6 +612,7 @@ async function renderRetailer(root) {
       <div class="delivery-list">
         ${deliveries.length ? deliveries.map(retailerCard).join("") : `<div class="empty-state">No deliveries logged yet.</div>`}
       </div>
+    </div>
     </div>
   `);
 
