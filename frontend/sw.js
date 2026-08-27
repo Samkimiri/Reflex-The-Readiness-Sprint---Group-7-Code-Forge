@@ -50,7 +50,16 @@ self.addEventListener("fetch", (event) => {
   event.respondWith(
     fetch(req)
       .then((res) => {
-        if (res.ok) caches.open(CACHE_NAME).then((cache) => cache.put(req, res.clone()));
+        // Clone synchronously, in the same tick we received `res` — before
+        // returning it (which hands the body to the browser to consume) and
+        // before the async caches.open() below resolves. Deferring the
+        // clone into that later .then() was the actual bug: by the time it
+        // ran, the body could already be locked by whoever's reading the
+        // returned `res`, throwing "Response body is already used".
+        if (res.ok) {
+          const toCache = res.clone();
+          caches.open(CACHE_NAME).then((cache) => cache.put(req, toCache));
+        }
         return res;
       })
       .catch(async () => {
