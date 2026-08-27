@@ -27,6 +27,23 @@ function waitFor(check, timeoutMs) {
   });
 }
 
+// Disables a button and shows a spinner + label while `fn` is in flight —
+// gives real feedback that a click registered (nothing here waits on a
+// network round trip silently) and, just as importantly, stops a double
+// click from firing the request twice (e.g. two "Assign" calls racing).
+async function withLoading(btn, label, fn) {
+  if (!btn || btn.disabled) return; // already in flight — this call is a double-click, drop it
+  const original = btn.innerHTML;
+  btn.disabled = true;
+  btn.innerHTML = `<span class="spinner"></span>${escapeHtml(label)}`;
+  try {
+    return await fn();
+  } finally {
+    btn.disabled = false;
+    btn.innerHTML = original;
+  }
+}
+
 // ---------- PWA: service worker + install prompt ----------
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -90,23 +107,85 @@ async function openInstallPromptModal() {
 
 function toast(msg, isError = false) {
   const el = document.getElementById("toast");
-  el.textContent = msg;
+  el.innerHTML = `<span class="toast-icon">${isError ? "⚠️" : "✅"}</span>${escapeHtml(msg)}`;
   el.classList.toggle("error", isError);
   el.classList.remove("hidden");
   clearTimeout(toast._t);
   toast._t = setTimeout(() => el.classList.add("hidden"), 3200);
 }
 
+// ---------- Landing page interactivity ----------
+// A quick, real proof-of-life for anyone landing on the login screen —
+// not a static claim, an actual call to /api/health.
+(async function checkSystemHealth() {
+  const dot = document.getElementById("hero-status-dot");
+  const text = document.getElementById("hero-status-text");
+  if (!dot || !text) return;
+  try {
+    const res = await fetch(API + "/health");
+    if (!res.ok) throw new Error();
+    dot.classList.add("status-dot-ok");
+    text.textContent = "All systems live";
+  } catch (e) {
+    dot.classList.add("status-dot-bad");
+    text.textContent = "Having trouble reaching the server";
+  }
+})();
+
+const EMAIL_CHECK_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+
+function wireEmailCheck(inputId, checkId) {
+  const input = document.getElementById(inputId);
+  const check = document.getElementById(checkId);
+  if (!input || !check) return;
+  const update = (showInvalid) => {
+    const val = input.value.trim();
+    check.classList.remove("valid", "invalid");
+    if (!val) { check.textContent = ""; return; }
+    if (EMAIL_CHECK_RE.test(val)) {
+      check.textContent = "✓";
+      check.classList.add("valid");
+    } else if (showInvalid) {
+      check.textContent = "✕";
+      check.classList.add("invalid");
+    } else {
+      check.textContent = "";
+    }
+  };
+  input.addEventListener("input", () => update(false)); // don't scold mid-typing
+  input.addEventListener("blur", () => update(true)); // but do flag it once they've moved on
+}
+wireEmailCheck("login-email", "login-email-check");
+wireEmailCheck("register-email", "register-email-check");
+
+(function wirePasswordStrength() {
+  const input = document.getElementById("register-password");
+  const bar = document.querySelector("#password-strength .password-strength-bar");
+  if (!input || !bar) return;
+  input.addEventListener("input", () => {
+    const val = input.value;
+    bar.classList.remove("weak", "medium", "strong");
+    if (!val) { bar.style.width = "0"; return; }
+    let score = 0;
+    if (val.length >= 6) score++;
+    if (val.length >= 10) score++;
+    if (/[0-9]/.test(val) && /[a-zA-Z]/.test(val)) score++;
+    if (/[^a-zA-Z0-9]/.test(val)) score++;
+    bar.classList.add(score <= 1 ? "weak" : score <= 2 ? "medium" : "strong");
+  });
+})();
+
 // ---------- Auth ----------
 document.getElementById("login-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const email = document.getElementById("login-email").value.trim();
   const password = document.getElementById("login-password").value;
-  await doLogin(email, password);
+  const btn = e.target.querySelector('button[type="submit"]');
+  await withLoading(btn, "Logging in…", () => doLogin(email, password));
 });
 
 document.querySelectorAll(".demo-btn").forEach((btn) => {
-  btn.addEventListener("click", () => doLogin(btn.dataset.email, btn.dataset.pass));
+  btn.addEventListener("click", () => withLoading(btn, "Logging in…", () => doLogin(btn.dataset.email, btn.dataset.pass)));
 });
 
 async function doLogin(email, password) {
@@ -196,16 +275,19 @@ document.getElementById("register-form").addEventListener("submit", async (e) =>
   errEl.textContent = "";
   const fd = new FormData(e.target);
   const body = Object.fromEntries(fd);
-  try {
-    const { token, user } = await api("/auth/register", { method: "POST", body });
-    state.token = token;
-    state.user = user;
-    localStorage.setItem("reflex_token", token);
-    localStorage.setItem("reflex_user", JSON.stringify(user));
-    enterApp();
-  } catch (e) {
-    errEl.textContent = e.message;
-  }
+  const btn = e.target.querySelector('button[type="submit"]');
+  await withLoading(btn, "Creating account…", async () => {
+    try {
+      const { token, user } = await api("/auth/register", { method: "POST", body });
+      state.token = token;
+      state.user = user;
+      localStorage.setItem("reflex_token", token);
+      localStorage.setItem("reflex_user", JSON.stringify(user));
+      enterApp();
+    } catch (e) {
+      errEl.textContent = e.message;
+    }
+  });
 });
 
 // ---------- Google sign-in ----------
@@ -318,6 +400,16 @@ function render() {
   if (state.user.role === "admin") return renderAdmin(root);
 }
 
+// Restarts the CSS fade-in animation on every re-render (forcing a reflow
+// between removing and re-adding the class) so each poll refresh reads as
+// "new content just arrived" rather than an abrupt content swap.
+function setViewHTML(root, html) {
+  root.innerHTML = html;
+  root.classList.remove("view-fade-in");
+  void root.offsetWidth;
+  root.classList.add("view-fade-in");
+}
+
 function statusLabel(s) {
   return s.replace("_", " ").replace(/\b\w/g, (c) => c.toUpperCase());
 }
@@ -333,7 +425,7 @@ async function renderRetailer(root) {
     api("/products").catch((e) => { toast(e.message, true); return []; }),
   ]);
 
-  root.innerHTML = `
+  setViewHTML(root, `
     <h2>Retailer — Log &amp; Track Deliveries</h2>
     <p class="subtitle">Every delivery you log, and where it stands right now.</p>
 
@@ -384,7 +476,7 @@ async function renderRetailer(root) {
         ${deliveries.length ? deliveries.map(retailerCard).join("") : `<div class="empty-state">No deliveries logged yet.</div>`}
       </div>
     </div>
-  `;
+  `);
 
   let pendingProductImage = null;
   const imageInput = document.getElementById("product-image-input");
@@ -416,13 +508,16 @@ async function renderRetailer(root) {
   document.getElementById("new-delivery-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const fd = new FormData(e.target);
-    try {
-      await api("/deliveries", { method: "POST", body: Object.fromEntries(fd) });
-      toast("Delivery logged.");
-      renderRetailer(root);
-    } catch (err) {
-      toast(err.message, true);
-    }
+    const btn = e.target.querySelector('button[type="submit"]');
+    await withLoading(btn, "Logging…", async () => {
+      try {
+        await api("/deliveries", { method: "POST", body: Object.fromEntries(fd) });
+        toast("Delivery logged.");
+        renderRetailer(root);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
   });
 
   document.getElementById("new-product-form").addEventListener("submit", async (e) => {
@@ -433,22 +528,25 @@ async function renderRetailer(root) {
     if (!body.price) delete body.price;
     if (!body.description) delete body.description;
     if (pendingProductImage) body.image = pendingProductImage;
-    try {
-      await api("/products", { method: "POST", body });
-      toast("Product added.");
-      renderRetailer(root);
-    } catch (err) {
-      toast(err.message, true);
-    }
+    const btn = e.target.querySelector('button[type="submit"]');
+    await withLoading(btn, "Adding…", async () => {
+      try {
+        await api("/products", { method: "POST", body });
+        toast("Product added.");
+        renderRetailer(root);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
   });
 
   root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr)));
   root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
   root.querySelectorAll("[data-cancel]").forEach((btn) =>
-    btn.addEventListener("click", () => cancelDelivery(btn.dataset.cancel, () => renderRetailer(root)))
+    btn.addEventListener("click", () => cancelDelivery(btn, btn.dataset.cancel, () => renderRetailer(root)))
   );
   root.querySelectorAll("[data-remove-product]").forEach((btn) =>
-    btn.addEventListener("click", () => removeProduct(btn.dataset.removeProduct, () => renderRetailer(root)))
+    btn.addEventListener("click", () => removeProduct(btn, btn.dataset.removeProduct, () => renderRetailer(root)))
   );
 }
 
@@ -496,15 +594,17 @@ function compressImageToDataUrl(file, maxDim = 480, quality = 0.72) {
   });
 }
 
-async function removeProduct(id, after) {
+async function removeProduct(btn, id, after) {
   if (!confirm("Remove this product from your catalog?")) return;
-  try {
-    await api(`/products/${id}`, { method: "DELETE" });
-    toast("Product removed.");
-    after();
-  } catch (e) {
-    toast(e.message, true);
-  }
+  await withLoading(btn, "Removing…", async () => {
+    try {
+      await api(`/products/${id}`, { method: "DELETE" });
+      toast("Product removed.");
+      after();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
 }
 
 function retailerCard(d) {
@@ -532,7 +632,7 @@ async function renderDispatcher(root) {
   ]);
   const inFlight = await api("/deliveries").then((all) => all.filter((d) => ["assigned", "picked_up"].includes(d.status))).catch(() => []);
 
-  root.innerHTML = `
+  setViewHTML(root, `
     <h2>Dispatcher — Assign Riders</h2>
     <p class="subtitle">Open requests waiting for a rider, and everything currently out for delivery.</p>
 
@@ -549,7 +649,7 @@ async function renderDispatcher(root) {
         ${inFlight.length ? inFlight.map(inFlightCard).join("") : `<div class="empty-state">Nothing currently assigned.</div>`}
       </div>
     </div>
-  `;
+  `);
 
   root.querySelectorAll("[data-assign-btn]").forEach((btn) => {
     btn.addEventListener("click", async () => {
@@ -557,19 +657,21 @@ async function renderDispatcher(root) {
       const select = root.querySelector(`select[data-assign-select="${id}"]`);
       const rider_id = select.value;
       if (!rider_id) return toast("Pick a rider first.", true);
-      try {
-        await api(`/deliveries/${id}/assign`, { method: "PATCH", body: { rider_id } });
-        toast("Rider assigned.");
-        renderDispatcher(root);
-      } catch (e) {
-        toast(e.message, true);
-      }
+      await withLoading(btn, "Assigning…", async () => {
+        try {
+          await api(`/deliveries/${id}/assign`, { method: "PATCH", body: { rider_id } });
+          toast("Rider assigned.");
+          renderDispatcher(root);
+        } catch (e) {
+          toast(e.message, true);
+        }
+      });
     });
   });
 
   root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
   root.querySelectorAll("[data-cancel]").forEach((btn) =>
-    btn.addEventListener("click", () => cancelDelivery(btn.dataset.cancel, () => renderDispatcher(root)))
+    btn.addEventListener("click", () => cancelDelivery(btn, btn.dataset.cancel, () => renderDispatcher(root)))
   );
 }
 
@@ -610,7 +712,7 @@ function inFlightCard(d) {
 async function renderRider(root) {
   const mine = await api("/deliveries?rider_id=me").then((all) => all.filter((d) => ["assigned", "picked_up"].includes(d.status))).catch(() => []);
 
-  root.innerHTML = `
+  setViewHTML(root, `
     <h2>Rider — Your Deliveries</h2>
     <p class="subtitle">Update status as you go. Delivery is confirmed by scanning the retailer's QR code.</p>
 
@@ -620,10 +722,10 @@ async function renderRider(root) {
         ${mine.length ? mine.map(riderCard).join("") : `<div class="empty-state">No deliveries assigned right now.</div>`}
       </div>
     </div>
-  `;
+  `);
 
   root.querySelectorAll("[data-pickup]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
+    btn.addEventListener("click", () => withLoading(btn, "Updating…", async () => {
       try {
         await api(`/deliveries/${btn.dataset.pickup}/status`, { method: "PATCH", body: { new_status: "picked_up" } });
         toast("Marked picked up.");
@@ -631,7 +733,7 @@ async function renderRider(root) {
       } catch (e) {
         toast(e.message, true);
       }
-    });
+    }));
   });
 
   root.querySelectorAll("[data-scan]").forEach((btn) => btn.addEventListener("click", () => openScanModal(btn.dataset.scan, () => renderRider(root))));
@@ -673,7 +775,7 @@ async function renderAdmin(root) {
   const byRole = countBy(users, (u) => u.role);
   const byStatus = countBy(deliveries, (d) => d.status);
 
-  root.innerHTML = `
+  setViewHTML(root, `
     <h2>Admin — System Overview</h2>
     <p class="subtitle">Read-only view across every retailer, rider, and dispatcher — for verifying the prototype is actually working, not day-to-day operations.</p>
 
@@ -722,7 +824,7 @@ async function renderAdmin(root) {
         ${products.length ? products.map((p) => adminProductCard(p, usersById)).join("") : `<div class="empty-state">No products in the system yet.</div>`}
       </div>
     </div>
-  `;
+  `);
 
   root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
   root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr)));
@@ -788,15 +890,17 @@ function fmtUptime(seconds) {
 }
 
 // ================= Shared actions =================
-async function cancelDelivery(id, after) {
+async function cancelDelivery(btn, id, after) {
   if (!confirm("Cancel this delivery?")) return;
-  try {
-    await api(`/deliveries/${id}/status`, { method: "PATCH", body: { new_status: "cancelled" } });
-    toast("Delivery cancelled.");
-    after();
-  } catch (e) {
-    toast(e.message, true);
-  }
+  await withLoading(btn, "Cancelling…", async () => {
+    try {
+      await api(`/deliveries/${id}/status`, { method: "PATCH", body: { new_status: "cancelled" } });
+      toast("Delivery cancelled.");
+      after();
+    } catch (e) {
+      toast(e.message, true);
+    }
+  });
 }
 
 // ================= Modals =================
@@ -876,10 +980,11 @@ function openScanModal(deliveryId, after) {
   `);
   modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
 
-  document.getElementById("manual-submit").addEventListener("click", async () => {
+  const manualBtn = document.getElementById("manual-submit");
+  manualBtn.addEventListener("click", () => {
     const code = document.getElementById("manual-code").value.trim();
     if (!code) return;
-    await confirmDelivery(deliveryId, code, modal, after);
+    withLoading(manualBtn, "Confirming…", () => confirmDelivery(deliveryId, code, modal, after));
   });
 
   startScanner(deliveryId, modal, after);

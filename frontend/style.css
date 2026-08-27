@@ -110,8 +110,41 @@ body {
   color: #cfe8e6;
   font-size: 14px;
   line-height: 1.55;
-  margin: 0 0 26px;
+  margin: 0 0 18px;
 }
+
+@keyframes statusPulse {
+  0% { transform: scale(0.6); opacity: 0.8; }
+  100% { transform: scale(1.8); opacity: 0; }
+}
+
+.hero-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #cfe8e6;
+  margin-bottom: 22px;
+}
+
+.status-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #94a3a2;
+  position: relative;
+  flex-shrink: 0;
+}
+.status-dot.status-dot-ok { background: var(--mint); }
+.status-dot.status-dot-ok::after {
+  content: "";
+  position: absolute;
+  inset: -4px;
+  border-radius: 50%;
+  border: 2px solid var(--mint);
+  animation: statusPulse 1.8s ease-out infinite;
+}
+.status-dot.status-dot-bad { background: var(--cherry); }
 
 .login-hero-features {
   list-style: none;
@@ -215,6 +248,38 @@ body {
 
 .password-field { position: relative; }
 .password-field input { padding-right: 42px; }
+
+.input-check-wrap { position: relative; }
+.input-check-wrap input { padding-right: 32px; }
+.input-check {
+  position: absolute;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  font-size: 13px;
+  font-weight: 700;
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  pointer-events: none;
+}
+.input-check.valid { opacity: 1; color: #036b45; }
+.input-check.invalid { opacity: 1; color: var(--cherry); }
+
+.password-strength {
+  height: 4px;
+  background: var(--border);
+  border-radius: 2px;
+  margin-top: 8px;
+  overflow: hidden;
+}
+.password-strength-bar {
+  height: 100%;
+  width: 0;
+  transition: width 0.25s ease, background 0.25s ease;
+}
+.password-strength-bar.weak { width: 33%; background: var(--cherry); }
+.password-strength-bar.medium { width: 66%; background: #d99a00; }
+.password-strength-bar.strong { width: 100%; background: #036b45; }
 
 #login-form .password-toggle, #register-form .password-toggle {
   position: absolute;
@@ -414,6 +479,30 @@ h2 { font-size: 20px; margin: 0 0 4px; }
 .btn-danger { background: var(--cherry); color: white; }
 .btn-danger:hover { filter: brightness(1.1); }
 .btn-sm { padding: 6px 12px; font-size: 12px; }
+
+.btn:disabled, #login-form button:disabled, #register-form button:disabled {
+  cursor: not-allowed;
+  opacity: 0.75;
+  transform: none;
+}
+
+@keyframes spin { to { transform: rotate(360deg); } }
+
+.spinner {
+  display: inline-block;
+  width: 12px;
+  height: 12px;
+  margin-right: 7px;
+  vertical-align: -1px;
+  border: 2px solid rgba(255,255,255,0.45);
+  border-top-color: white;
+  border-radius: 50%;
+  animation: spin 0.6s linear infinite;
+}
+.btn-secondary .spinner {
+  border-color: rgba(1,58,64,0.2);
+  border-top-color: var(--teal-dark);
+}
 
 .delivery-list { display: flex; flex-direction: column; gap: 10px; }
 
@@ -687,6 +776,14 @@ video#scan-video { width: 100%; border-radius: 8px; background: #000; }
   animation: toastIn 0.2s ease;
 }
 .toast.error { background: var(--cherry); }
+.toast-icon { margin-right: 8px; }
+
+/* ---------- View transition ---------- */
+@keyframes viewFadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: none; }
+}
+.view-fade-in { animation: viewFadeIn 0.25s ease; }
 
 /* ---------- Responsive: phones, and the installed-app window ---------- */
 @media (max-width: 640px) {

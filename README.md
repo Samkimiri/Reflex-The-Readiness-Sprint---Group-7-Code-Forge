@@ -212,6 +212,15 @@ compression normally produces.
 - An in-app "How Reflex works" guide (✨ link on the login screen) — a
   four-step illustrated walkthrough of the retailer→dispatcher→rider→QR
   relay, for anyone opening the prototype cold
+- Real interaction feedback everywhere it's needed: every action button
+  (login, register, log a delivery, add a product, assign, cancel, pick
+  up, scan-confirm) shows a spinner and disables itself while its request
+  is in flight — both a UX nicety and a correctness fix, since it also
+  stops a double-click from firing the same request twice. Login/register
+  get live feedback too: a green check/red X on the email field as you
+  type, and a strength meter under the password field on registration.
+  The login screen's hero panel also shows a live `/api/health` status
+  badge — an actual proof-of-life, not a static claim.
 - The exact status state machine from the architecture deck, enforced
   server-side with role checks on every transition
 - A real, provable audit trail (`status_log`) — visible as "History" on any
