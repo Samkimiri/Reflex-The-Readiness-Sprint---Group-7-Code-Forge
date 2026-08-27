@@ -487,22 +487,27 @@ async function renderRetailer(root) {
     </div>
 
     <div class="panel">
-      <h3>Your products (${products.length})</h3>
-      <p class="subtitle" style="margin-bottom:14px;">What you sell — pick any of these when logging a delivery above.</p>
-      <form id="new-product-form" class="form-grid">
-        <div><label>Product name</label><input name="name" required /></div>
-        <div><label>Price (KSh, optional)</label><input name="price" type="number" min="0" step="1" /></div>
-        <div class="full"><label>Description (optional)</label><input name="description" /></div>
-        <div class="full">
-          <label>Photo (optional)</label>
-          <div class="image-picker">
-            <img id="product-image-preview" class="image-preview hidden" alt="" />
-            <input type="file" name="imageFile" id="product-image-input" accept="image/*" />
+      <div class="product-panel-head">
+        <h3>🛍️ Your catalog (${products.length})</h3>
+        <p class="subtitle">What you sell — pick any of these when logging a delivery above.</p>
+      </div>
+      <details class="add-product-toggle">
+        <summary class="btn btn-secondary btn-sm">+ Add a product</summary>
+        <form id="new-product-form" class="form-grid">
+          <div><label>Product name</label><input name="name" required /></div>
+          <div><label>Price (KSh, optional)</label><input name="price" type="number" min="0" step="1" /></div>
+          <div class="full"><label>Description (optional)</label><input name="description" /></div>
+          <div class="full">
+            <label>Photo (optional)</label>
+            <div class="image-picker">
+              <img id="product-image-preview" class="image-preview hidden" alt="" />
+              <input type="file" name="imageFile" id="product-image-input" accept="image/*" />
+            </div>
           </div>
-        </div>
-        <div class="full"><button class="btn btn-secondary" type="submit">Add product</button></div>
-      </form>
-      <div class="delivery-list" style="margin-top:16px;">
+          <div class="full"><button class="btn btn-primary" type="submit">Add product</button></div>
+        </form>
+      </details>
+      <div class="product-grid">
         ${products.length ? products.map(productCard).join("") : `<div class="empty-state">No products yet — add what you sell above.</div>`}
       </div>
     </div>
@@ -595,18 +600,17 @@ async function renderRetailer(root) {
 
 function productCard(p) {
   const thumb = p.image
-    ? `<img class="product-thumb" src="${p.image}" alt="${escapeHtml(p.name)}" />`
-    : `<div class="product-thumb product-thumb-placeholder">${escapeHtml((p.name || "?")[0].toUpperCase())}</div>`;
+    ? `<img class="product-card-img" src="${p.image}" alt="${escapeHtml(p.name)}" />`
+    : `<div class="product-card-img product-card-img-placeholder">${escapeHtml((p.name || "?")[0].toUpperCase())}</div>`;
   return `
-    <div class="delivery-card">
+    <div class="product-card">
       ${thumb}
-      <div class="delivery-main">
-        <div class="delivery-title">${escapeHtml(p.name)}${p.price != null ? `<span class="price-tag">KSh ${p.price}</span>` : ""}</div>
-        ${p.description ? `<div class="delivery-sub">${escapeHtml(p.description)}</div>` : ""}
+      <div class="product-card-body">
+        <div class="product-card-name">${escapeHtml(p.name)}</div>
+        ${p.price != null ? `<div class="product-card-price">KSh ${p.price}</div>` : ""}
+        ${p.description ? `<div class="product-card-desc">${escapeHtml(p.description)}</div>` : ""}
       </div>
-      <div class="delivery-actions">
-        <button class="btn btn-danger btn-sm" data-remove-product="${p.id}">Remove</button>
-      </div>
+      <button class="btn btn-danger btn-sm product-card-remove" data-remove-product="${p.id}">Remove</button>
     </div>
   `;
 }

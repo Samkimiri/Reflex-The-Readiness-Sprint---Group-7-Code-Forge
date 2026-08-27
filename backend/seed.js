@@ -42,6 +42,16 @@ const DEMO_PRODUCTS = [
   { name: "Phone case", price: 600, description: "Silicone, various colors" },
   { name: "Bluetooth speaker", price: 3200, description: "Portable, 10W, USB-C charging" },
   { name: "65W laptop charger", price: 1800, description: "USB-C fast charging" },
+  { name: "Wired earphones", price: 300, description: "3.5mm jack, in-ear" },
+  { name: "10000mAh power bank", price: 2200, description: "Dual USB output, fast charge" },
+  { name: "USB-C cable (1m)", price: 250, description: "Braided, fast charging + data" },
+  { name: "HDMI cable (2m)", price: 500, description: "4K supported" },
+  { name: "Wireless mouse", price: 900, description: "2.4GHz, USB receiver" },
+  { name: "Bluetooth keyboard", price: 2800, description: "Slim, rechargeable" },
+  { name: "Tempered glass screen protector", price: 200, description: "Fits most phone models" },
+  { name: "Car phone holder", price: 700, description: "Dashboard/vent mount" },
+  { name: "USB LED desk lamp", price: 1500, description: "3 brightness levels" },
+  { name: "256GB portable SSD", price: 4500, description: "USB 3.0, pocket-sized" },
 ];
 
 // One example delivery per status, so every screen (retailer, dispatcher,
@@ -103,16 +113,23 @@ async function seed() {
 }
 
 async function seedProducts() {
-  const db = await readDB();
-  if (db.products.length > 0) return; // already seeded, or the retailer has real products now
-
   const retailer = await findUserByEmail("retailer@reflex.demo");
   if (!retailer) return;
 
-  for (const p of DEMO_PRODUCTS) {
+  // Per-item rather than all-or-nothing: lets us grow the starter catalog
+  // over time without duplicating products a demo retailer already has (or
+  // re-adding ones a real retailer renamed/removed).
+  const db = await readDB();
+  const existingNames = new Set(
+    db.products.filter((p) => p.retailer_id === retailer.id).map((p) => p.name)
+  );
+  const toAdd = DEMO_PRODUCTS.filter((p) => !existingNames.has(p.name));
+  if (toAdd.length === 0) return;
+
+  for (const p of toAdd) {
     await createProduct({ retailer_id: retailer.id, name: p.name, price: p.price, description: p.description });
   }
-  console.log(`Seeded ${DEMO_PRODUCTS.length} example products.`);
+  console.log(`Seeded ${toAdd.length} example products.`);
 }
 
 async function seedDeliveries() {

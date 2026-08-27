@@ -43,7 +43,7 @@ email/password form:
 
 ...plus five example deliveries under the retailer account, one in each
 status (`requested`, `assigned`, `picked_up`, `delivered`, `cancelled`), and
-four example products in the retailer's catalog — so every dashboard has
+fourteen example products in the retailer's catalog — so every dashboard has
 something to show instead of an empty state: the dispatcher has an open
 request to assign, the rider has one to pick up and one to scan-confirm, the
 retailer's "History" shows a full audit trail on the delivered one, and the
@@ -135,7 +135,10 @@ retailer/dispatcher/rider; an admin account only ever comes from seeding.
 
 Retailers manage a simple product catalog (name, optional price, optional
 description, optional photo) in the same dashboard where they log and track
-deliveries — one connected view, not a separate page. When logging a new
+deliveries — one connected view, not a separate page. Products render as a
+responsive card grid (photo/placeholder, name, price, description, remove
+button) rather than a plain list, and the "add a product" form lives behind
+a collapsible toggle so the catalog itself is the focus. When logging a new
 delivery, a dropdown lists the retailer's products; picking one fills in the
 item description (still editable, or skip it and type freely). Products are
 scoped to the retailer that created them (`GET/POST /api/products`,
