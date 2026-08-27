@@ -236,6 +236,21 @@ compression normally produces.
   under the retailer's hands, wiping whatever they'd typed. The retailer
   view re-renders after every action it takes instead (create/cancel/add
   product), plus a manual refresh button for the rest
+- Status-change toasts on the dispatcher and rider views: each poll tick
+  diffs the freshly-fetched deliveries against what was on screen last
+  tick and toasts whatever changed (a new delivery entering that role's
+  view, or an existing one moving to a new status), so the 5s auto-refresh
+  reads as live activity instead of a silent list swap. Skipped on the
+  first render after login (nothing to diff against yet) and after the
+  viewer's own action (which already shows its own confirmation toast)
+- Search + status filtering on the dispatcher and rider delivery lists —
+  a text search across customer name/address plus a status dropdown,
+  filtered client-side against the already-fetched list so it's instant.
+  Filter state (and focus/cursor position, if the search box was focused)
+  survives the 5s poll re-render instead of resetting
+- Retailer "at a glance" stats (deliveries in the last 7 days, average
+  time from logged to delivered, cancellation rate) computed client-side
+  from the retailer's own delivery history — no extra API calls
 
 ## Architecture notes / where this differs from the original design doc
 

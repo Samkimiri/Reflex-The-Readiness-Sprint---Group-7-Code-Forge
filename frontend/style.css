@@ -437,6 +437,25 @@ h2 { font-size: 20px; margin: 0 0 4px; }
 .view-heading-row h2 { margin-bottom: 4px; }
 .view-heading-row .subtitle { margin-bottom: 0; }
 
+.filter-bar {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+.filter-bar input[type="search"] {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 13px;
+  font-family: inherit;
+}
+.filter-bar select {
+  width: auto;
+  flex-shrink: 0;
+}
+
 /* ---------- Cards / tables ---------- */
 .panel {
   background: var(--white);
@@ -872,6 +891,9 @@ video#scan-video { width: 100%; border-radius: 8px; background: #000; }
   .delivery-actions .btn { flex: 1; }
 
   .product-grid { grid-template-columns: repeat(auto-fill, minmax(130px, 1fr)); gap: 10px; }
+
+  .filter-bar { flex-direction: column; }
+  .filter-bar select { width: 100%; }
 
   .modal { padding: 20px; }
 

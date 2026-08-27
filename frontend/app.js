@@ -1,5 +1,20 @@
 const API = "/api";
-let state = { token: null, user: null, pollTimer: null };
+let state = {
+  token: null,
+  user: null,
+  pollTimer: null,
+  // Per-role search/status filter state for the dispatcher and rider
+  // delivery lists — kept here (not in the DOM) so it survives the
+  // full-innerHTML re-render every poll tick without losing what the
+  // user typed.
+  filters: {
+    dispatcher: { search: "", status: "" },
+    rider: { search: "", status: "" },
+  },
+  // Per-role snapshot of {id -> status} from the last render, used to
+  // detect and toast what changed since the previous poll tick.
+  snapshots: { dispatcher: null, rider: null },
+};
 
 // ---------- API helper ----------
 async function api(path, { method = "GET", body } = {}) {
@@ -405,6 +420,11 @@ function enterApp() {
   if (whoName) whoName.textContent = state.user.name;
   const whoRole = document.getElementById("who-role");
   if (whoRole) whoRole.textContent = state.user.role;
+  // Fresh per-session: without this, logging out and back in as a
+  // different dispatcher/rider would diff against the previous user's
+  // last-seen statuses and fire bogus "changed" toasts on first render.
+  state.filters = { dispatcher: { search: "", status: "" }, rider: { search: "", status: "" } };
+  state.snapshots = { dispatcher: null, rider: null };
   render();
   clearInterval(state.pollTimer);
   // Polling refresh — see trade-off log: simplest way to keep views current
@@ -452,6 +472,69 @@ function fmtTime(iso) {
   return new Date(iso).toLocaleString([], { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
 }
 
+// Retailer "at a glance" stats — computed client-side from the deliveries
+// already fetched for the view, so no extra API calls. avgDeliveryMs uses
+// updated_at on delivered deliveries as a stand-in for "when it was marked
+// delivered" (updated_at is bumped on every status change, so for a
+// delivery currently sitting at status "delivered" it's exactly that).
+function computeRetailerStats(deliveries) {
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const last7Days = deliveries.filter((d) => new Date(d.created_at).getTime() >= sevenDaysAgo).length;
+
+  const delivered = deliveries.filter((d) => d.status === "delivered");
+  const avgDeliveryMs = delivered.length
+    ? delivered.reduce((sum, d) => sum + (new Date(d.updated_at) - new Date(d.created_at)), 0) / delivered.length
+    : null;
+
+  const cancelled = deliveries.filter((d) => d.status === "cancelled").length;
+  const cancelRate = deliveries.length ? Math.round((cancelled / deliveries.length) * 100) : 0;
+
+  return { last7Days, avgDeliveryMs, deliveredCount: delivered.length, cancelRate };
+}
+
+function fmtDuration(ms) {
+  if (ms == null) return "—";
+  const mins = Math.round(ms / 60000);
+  if (mins < 60) return `${mins}m`;
+  const hrs = mins / 60;
+  if (hrs < 24) return `${hrs.toFixed(1)}h`;
+  return `${(hrs / 24).toFixed(1)}d`;
+}
+
+// Shared by the dispatcher and rider list filter bars: a text match on
+// customer name/address, AND'd with an exact status match if one is set.
+function filterDeliveries(items, filters) {
+  const q = (filters.search || "").trim().toLowerCase();
+  return items.filter((d) => {
+    if (filters.status && d.status !== filters.status) return false;
+    if (!q) return true;
+    return (d.customer_name || "").toLowerCase().includes(q) || (d.address || "").toLowerCase().includes(q);
+  });
+}
+
+// Compares this render's fetched deliveries against what was seen last
+// poll tick for this role, toasting whatever changed — a delivery
+// entering this role's view for the first time, or an existing one
+// moving to a new status — so the 5s auto-refresh reads as "live"
+// instead of a silent list swap. Silently updates the snapshot without
+// toasting on the very first render for a role (nothing to diff against
+// yet) or when `silent` is set (used right after the viewer's own
+// action, which already shows its own confirmation toast — diffing
+// there would just repeat it).
+function diffAndToastChanges(role, items, { silent = false } = {}) {
+  const prev = state.snapshots[role];
+  if (prev && !silent) {
+    for (const d of items) {
+      if (!prev.has(d.id)) {
+        toast(`New delivery: ${d.customer_name}`);
+      } else if (prev.get(d.id) !== d.status) {
+        toast(`${d.customer_name} → ${statusLabel(d.status)}`);
+      }
+    }
+  }
+  state.snapshots[role] = new Map(items.map((d) => [d.id, d.status]));
+}
+
 // ================= RETAILER =================
 async function renderRetailer(root) {
   const [deliveries, products] = await Promise.all([
@@ -459,11 +542,22 @@ async function renderRetailer(root) {
     api("/products").catch((e) => { toast(e.message, true); return []; }),
   ]);
 
+  const stats = computeRetailerStats(deliveries);
+
   setViewHTML(root, `
     <div class="view-heading-row">
       <div><h2>Retailer — Log &amp; Track Deliveries</h2>
       <p class="subtitle">Every delivery you log, and where it stands right now.</p></div>
       <button class="btn btn-secondary btn-sm" id="retailer-refresh" type="button">🔄 Refresh</button>
+    </div>
+
+    <div class="panel">
+      <h3>📊 At a glance</h3>
+      <div class="stat-grid">
+        ${statCard("Last 7 days", stats.last7Days, null, "deliveries logged")}
+        ${statCard("Avg. delivery time", fmtDuration(stats.avgDeliveryMs), null, stats.deliveredCount ? `across ${stats.deliveredCount} delivered` : "no deliveries yet")}
+        ${statCard("Cancellation rate", `${stats.cancelRate}%`, stats.cancelRate > 20 ? "bad" : null, `${deliveries.length} total logged`)}
+      </div>
     </div>
 
     <div class="panel">
@@ -672,54 +766,104 @@ function retailerCard(d) {
 }
 
 // ================= DISPATCHER =================
-async function renderDispatcher(root) {
+async function renderDispatcher(root, opts = {}) {
   const [open, riders] = await Promise.all([
     api("/deliveries?status=requested").catch(() => []),
     api("/users?role=rider").catch(() => []),
   ]);
   const inFlight = await api("/deliveries").then((all) => all.filter((d) => ["assigned", "picked_up"].includes(d.status))).catch(() => []);
 
+  diffAndToastChanges("dispatcher", [...open, ...inFlight], opts);
+
+  const filters = state.filters.dispatcher;
+  const searchHadFocus = document.activeElement && document.activeElement.id === "dispatcher-search";
+  const caret = searchHadFocus ? document.activeElement.selectionStart : null;
+
   setViewHTML(root, `
     <h2>Dispatcher — Assign Riders</h2>
     <p class="subtitle">Open requests waiting for a rider, and everything currently out for delivery.</p>
 
+    <div class="filter-bar">
+      <input type="search" id="dispatcher-search" placeholder="Search customer or address…" value="${escapeHtml(filters.search)}" />
+      <select id="dispatcher-status-filter">
+        <option value="">All statuses</option>
+        <option value="requested" ${filters.status === "requested" ? "selected" : ""}>Requested</option>
+        <option value="assigned" ${filters.status === "assigned" ? "selected" : ""}>Assigned</option>
+        <option value="picked_up" ${filters.status === "picked_up" ? "selected" : ""}>Picked up</option>
+      </select>
+    </div>
+
     <div class="panel">
       <h3>Open requests (${open.length})</h3>
-      <div class="delivery-list">
-        ${open.length ? open.map((d) => dispatcherCard(d, riders)).join("") : `<div class="empty-state">No open requests right now.</div>`}
-      </div>
+      <div class="delivery-list" id="dispatcher-open-list"></div>
     </div>
 
     <div class="panel">
       <h3>In flight (${inFlight.length})</h3>
-      <div class="delivery-list">
-        ${inFlight.length ? inFlight.map(inFlightCard).join("") : `<div class="empty-state">Nothing currently assigned.</div>`}
-      </div>
+      <div class="delivery-list" id="dispatcher-inflight-list"></div>
     </div>
   `);
 
-  root.querySelectorAll("[data-assign-btn]").forEach((btn) => {
-    btn.addEventListener("click", async () => {
-      const id = btn.dataset.assignBtn;
-      const select = root.querySelector(`select[data-assign-select="${id}"]`);
-      const rider_id = select.value;
-      if (!rider_id) return toast("Pick a rider first.", true);
-      await withLoading(btn, "Assigning…", async () => {
-        try {
-          await api(`/deliveries/${id}/assign`, { method: "PATCH", body: { rider_id } });
-          toast("Rider assigned.");
-          renderDispatcher(root);
-        } catch (e) {
-          toast(e.message, true);
-        }
+  function wireOpenList() {
+    root.querySelectorAll("#dispatcher-open-list [data-assign-btn]").forEach((btn) => {
+      btn.addEventListener("click", async () => {
+        const id = btn.dataset.assignBtn;
+        const select = root.querySelector(`select[data-assign-select="${id}"]`);
+        const rider_id = select.value;
+        if (!rider_id) return toast("Pick a rider first.", true);
+        await withLoading(btn, "Assigning…", async () => {
+          try {
+            await api(`/deliveries/${id}/assign`, { method: "PATCH", body: { rider_id } });
+            toast("Rider assigned.");
+            renderDispatcher(root, { silent: true });
+          } catch (e) {
+            toast(e.message, true);
+          }
+        });
       });
     });
+    root.querySelectorAll("#dispatcher-open-list [data-cancel]").forEach((btn) =>
+      btn.addEventListener("click", () => cancelDelivery(btn, btn.dataset.cancel, () => renderDispatcher(root, { silent: true })))
+    );
+  }
+
+  function wireInFlightList() {
+    root.querySelectorAll("#dispatcher-inflight-list [data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
+  }
+
+  function renderLists() {
+    const filteredOpen = filterDeliveries(open, filters);
+    const filteredInFlight = filterDeliveries(inFlight, filters);
+    const isFiltering = filters.search || filters.status;
+
+    document.getElementById("dispatcher-open-list").innerHTML = filteredOpen.length
+      ? filteredOpen.map((d) => dispatcherCard(d, riders)).join("")
+      : `<div class="empty-state">${isFiltering ? "No open requests match your search." : "No open requests right now."}</div>`;
+    wireOpenList();
+
+    document.getElementById("dispatcher-inflight-list").innerHTML = filteredInFlight.length
+      ? filteredInFlight.map(inFlightCard).join("")
+      : `<div class="empty-state">${isFiltering ? "Nothing in flight matches your search." : "Nothing currently assigned."}</div>`;
+    wireInFlightList();
+  }
+
+  renderLists();
+
+  const searchInput = document.getElementById("dispatcher-search");
+  const statusSelect = document.getElementById("dispatcher-status-filter");
+  searchInput.addEventListener("input", () => {
+    filters.search = searchInput.value;
+    renderLists();
+  });
+  statusSelect.addEventListener("change", () => {
+    filters.status = statusSelect.value;
+    renderLists();
   });
 
-  root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
-  root.querySelectorAll("[data-cancel]").forEach((btn) =>
-    btn.addEventListener("click", () => cancelDelivery(btn, btn.dataset.cancel, () => renderDispatcher(root)))
-  );
+  if (searchHadFocus) {
+    searchInput.focus();
+    if (caret != null) searchInput.setSelectionRange(caret, caret);
+  }
 }
 
 function dispatcherCard(d, riders) {
@@ -756,35 +900,76 @@ function inFlightCard(d) {
 }
 
 // ================= RIDER =================
-async function renderRider(root) {
+async function renderRider(root, opts = {}) {
   const mine = await api("/deliveries?rider_id=me").then((all) => all.filter((d) => ["assigned", "picked_up"].includes(d.status))).catch(() => []);
+
+  diffAndToastChanges("rider", mine, opts);
+
+  const filters = state.filters.rider;
+  const searchHadFocus = document.activeElement && document.activeElement.id === "rider-search";
+  const caret = searchHadFocus ? document.activeElement.selectionStart : null;
 
   setViewHTML(root, `
     <h2>Rider — Your Deliveries</h2>
     <p class="subtitle">Update status as you go. Delivery is confirmed by scanning the retailer's QR code.</p>
 
+    <div class="filter-bar">
+      <input type="search" id="rider-search" placeholder="Search customer or address…" value="${escapeHtml(filters.search)}" />
+      <select id="rider-status-filter">
+        <option value="">All statuses</option>
+        <option value="assigned" ${filters.status === "assigned" ? "selected" : ""}>Assigned</option>
+        <option value="picked_up" ${filters.status === "picked_up" ? "selected" : ""}>Picked up</option>
+      </select>
+    </div>
+
     <div class="panel">
       <h3>Assigned to you (${mine.length})</h3>
-      <div class="delivery-list">
-        ${mine.length ? mine.map(riderCard).join("") : `<div class="empty-state">No deliveries assigned right now.</div>`}
-      </div>
+      <div class="delivery-list" id="rider-list"></div>
     </div>
   `);
 
-  root.querySelectorAll("[data-pickup]").forEach((btn) => {
-    btn.addEventListener("click", () => withLoading(btn, "Updating…", async () => {
-      try {
-        await api(`/deliveries/${btn.dataset.pickup}/status`, { method: "PATCH", body: { new_status: "picked_up" } });
-        toast("Marked picked up.");
-        renderRider(root);
-      } catch (e) {
-        toast(e.message, true);
-      }
-    }));
+  function wireList() {
+    root.querySelectorAll("#rider-list [data-pickup]").forEach((btn) => {
+      btn.addEventListener("click", () => withLoading(btn, "Updating…", async () => {
+        try {
+          await api(`/deliveries/${btn.dataset.pickup}/status`, { method: "PATCH", body: { new_status: "picked_up" } });
+          toast("Marked picked up.");
+          renderRider(root, { silent: true });
+        } catch (e) {
+          toast(e.message, true);
+        }
+      }));
+    });
+    root.querySelectorAll("#rider-list [data-scan]").forEach((btn) => btn.addEventListener("click", () => openScanModal(btn.dataset.scan, () => renderRider(root, { silent: true }))));
+    root.querySelectorAll("#rider-list [data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
+  }
+
+  function renderList() {
+    const filtered = filterDeliveries(mine, filters);
+    const isFiltering = filters.search || filters.status;
+    document.getElementById("rider-list").innerHTML = filtered.length
+      ? filtered.map(riderCard).join("")
+      : `<div class="empty-state">${isFiltering ? "No deliveries match your search." : "No deliveries assigned right now."}</div>`;
+    wireList();
+  }
+
+  renderList();
+
+  const searchInput = document.getElementById("rider-search");
+  const statusSelect = document.getElementById("rider-status-filter");
+  searchInput.addEventListener("input", () => {
+    filters.search = searchInput.value;
+    renderList();
+  });
+  statusSelect.addEventListener("change", () => {
+    filters.status = statusSelect.value;
+    renderList();
   });
 
-  root.querySelectorAll("[data-scan]").forEach((btn) => btn.addEventListener("click", () => openScanModal(btn.dataset.scan, () => renderRider(root))));
-  root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
+  if (searchHadFocus) {
+    searchInput.focus();
+    if (caret != null) searchInput.setSelectionRange(caret, caret);
+  }
 }
 
 function riderCard(d) {
