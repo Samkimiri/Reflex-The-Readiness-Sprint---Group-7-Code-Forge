@@ -227,7 +227,7 @@ compression normally produces.
   delivery
 - Real QR code generation (`qrcode` npm package) and camera-based scanning
   (`jsQR`), with manual-entry fallback
-- Polling refresh every 4s for dispatcher and rider (the Trade-off #1 from
+- Polling refresh every 5s for dispatcher and rider (the Trade-off #1 from
   the trade-off log). The retailer view is excluded from this: it's a
   multi-field form, and a poll tick mid-fill would replace the form's HTML
   under the retailer's hands, wiping whatever they'd typed. The retailer

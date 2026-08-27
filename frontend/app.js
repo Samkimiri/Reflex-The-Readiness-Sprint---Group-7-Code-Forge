@@ -410,7 +410,7 @@ function enterApp() {
   // Polling refresh — see trade-off log: simplest way to keep views current
   // without building websocket infrastructure in a one-week sprint. Not for
   // the retailer, though: their view is a multi-field form (customer name,
-  // phone, address, item description) that takes more than 4s to fill out
+  // phone, address, item description) that takes more than 5s to fill out
   // for a real person, and a poll tick does a full re-render — replacing
   // the form's HTML mid-type, wiping whatever they'd typed, and silently
   // detaching the submit button they'd meant to click. That's exactly what
@@ -420,7 +420,7 @@ function enterApp() {
   // doesn't yank itself out from under someone mid-form. A manual refresh
   // button covers the rest.
   if (state.user.role !== "retailer") {
-    state.pollTimer = setInterval(render, 4000);
+    state.pollTimer = setInterval(render, 5000);
   }
 }
 
