@@ -44,6 +44,23 @@ async function withLoading(btn, label, fn) {
   }
 }
 
+// Wires an event listener only if the element actually exists, instead of
+// throwing and halting every top-level statement after it. That halt is
+// the real failure mode this guards against: a stale service-worker-cached
+// page whose HTML doesn't match the freshly-fetched app.js (or vice versa)
+// after a deploy — one missing #id here would otherwise silently break
+// every feature wired up *after* it in this file, including login and the
+// delivery form, even though neither is actually the broken part.
+function on(id, event, handler) {
+  const el = document.getElementById(id);
+  if (!el) {
+    console.warn(`Reflex: #${id} not found — skipping its setup. If this persists, hard-refresh (the cached page may be out of sync with the app).`);
+    return null;
+  }
+  el.addEventListener(event, handler);
+  return el;
+}
+
 // ---------- PWA: service worker + install prompt ----------
 if ("serviceWorker" in navigator) {
   window.addEventListener("load", () => {
@@ -58,22 +75,21 @@ if ("serviceWorker" in navigator) {
 let deferredInstallPrompt = null;
 const installLinkLogin = document.getElementById("install-link-login");
 const installLinkApp = document.getElementById("install-link-app");
+const installLinks = [installLinkLogin, installLinkApp].filter(Boolean);
 
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
   deferredInstallPrompt = e;
-  installLinkLogin.classList.remove("hidden");
-  installLinkApp.classList.remove("hidden");
+  installLinks.forEach((btn) => btn.classList.remove("hidden"));
   if (!localStorage.getItem("reflex_install_prompt_dismissed")) {
     openInstallPromptModal();
   }
 });
 
-[installLinkLogin, installLinkApp].forEach((btn) => btn.addEventListener("click", () => openInstallPromptModal()));
+installLinks.forEach((btn) => btn.addEventListener("click", () => openInstallPromptModal()));
 
 window.addEventListener("appinstalled", () => {
-  installLinkLogin.classList.add("hidden");
-  installLinkApp.classList.add("hidden");
+  installLinks.forEach((btn) => btn.classList.add("hidden"));
   deferredInstallPrompt = null;
 });
 
@@ -176,7 +192,7 @@ wireEmailCheck("register-email", "register-email-check");
 })();
 
 // ---------- Auth ----------
-document.getElementById("login-form").addEventListener("submit", async (e) => {
+on("login-form", "submit", async (e) => {
   e.preventDefault();
   const email = document.getElementById("login-email").value.trim();
   const password = document.getElementById("login-password").value;
@@ -207,6 +223,7 @@ async function doLogin(email, password) {
 document.querySelectorAll(".password-toggle").forEach((btn) => {
   btn.addEventListener("click", () => {
     const input = document.getElementById(btn.dataset.toggleFor);
+    if (!input) return;
     const showing = input.type === "text";
     input.type = showing ? "password" : "text";
     btn.textContent = showing ? "👁" : "🙈";
@@ -215,7 +232,7 @@ document.querySelectorAll(".password-toggle").forEach((btn) => {
 });
 
 // ---------- "How it works" guide ----------
-document.getElementById("guide-link").addEventListener("click", openGuideModal);
+on("guide-link", "click", openGuideModal);
 
 function openGuideModal() {
   const steps = [
@@ -252,24 +269,26 @@ function openGuideModal() {
 }
 
 // ---------- Register ----------
-document.getElementById("show-register-btn").addEventListener("click", () => setAuthMode("register"));
-document.getElementById("show-login-btn").addEventListener("click", () => setAuthMode("login"));
+on("show-register-btn", "click", () => setAuthMode("register"));
+on("show-login-btn", "click", () => setAuthMode("login"));
 
 function setAuthMode(mode) {
   const isRegister = mode === "register";
-  document.getElementById("login-form").classList.toggle("hidden", isRegister);
-  document.getElementById("register-form").classList.toggle("hidden", !isRegister);
-  document.getElementById("switch-to-register").classList.toggle("hidden", isRegister);
-  document.getElementById("switch-to-login").classList.toggle("hidden", !isRegister);
-  document.getElementById("demo-accounts").classList.toggle("hidden", isRegister);
-  document.getElementById("auth-tagline").textContent = isRegister
-    ? "Create your account"
-    : "Delivery coordination for Kenyan retailers";
-  document.getElementById("login-error").textContent = "";
-  document.getElementById("register-error").textContent = "";
+  const toggle = (id, hidden) => document.getElementById(id)?.classList.toggle("hidden", hidden);
+  toggle("login-form", isRegister);
+  toggle("register-form", !isRegister);
+  toggle("switch-to-register", isRegister);
+  toggle("switch-to-login", !isRegister);
+  toggle("demo-accounts", isRegister);
+  const tagline = document.getElementById("auth-tagline");
+  if (tagline) tagline.textContent = isRegister ? "Create your account" : "Delivery coordination for Kenyan retailers";
+  const loginErr = document.getElementById("login-error");
+  if (loginErr) loginErr.textContent = "";
+  const registerErr = document.getElementById("register-error");
+  if (registerErr) registerErr.textContent = "";
 }
 
-document.getElementById("register-form").addEventListener("submit", async (e) => {
+on("register-form", "submit", async (e) => {
   e.preventDefault();
   const errEl = document.getElementById("register-error");
   errEl.textContent = "";
@@ -370,20 +389,22 @@ function openGoogleRolePicker() {
   });
 }
 
-document.getElementById("logout-btn").addEventListener("click", () => {
+on("logout-btn", "click", () => {
   clearInterval(state.pollTimer);
   state = { token: null, user: null, pollTimer: null };
   localStorage.removeItem("reflex_token");
   localStorage.removeItem("reflex_user");
-  document.getElementById("app-screen").classList.add("hidden");
-  document.getElementById("login-screen").classList.remove("hidden");
+  document.getElementById("app-screen")?.classList.add("hidden");
+  document.getElementById("login-screen")?.classList.remove("hidden");
 });
 
 function enterApp() {
-  document.getElementById("login-screen").classList.add("hidden");
-  document.getElementById("app-screen").classList.remove("hidden");
-  document.getElementById("who-name").textContent = state.user.name;
-  document.getElementById("who-role").textContent = state.user.role;
+  document.getElementById("login-screen")?.classList.add("hidden");
+  document.getElementById("app-screen")?.classList.remove("hidden");
+  const whoName = document.getElementById("who-name");
+  if (whoName) whoName.textContent = state.user.name;
+  const whoRole = document.getElementById("who-role");
+  if (whoRole) whoRole.textContent = state.user.role;
   render();
   clearInterval(state.pollTimer);
   // Polling refresh — see trade-off log: simplest way to keep views current
@@ -394,6 +415,7 @@ function enterApp() {
 // ---------- Router by role ----------
 function render() {
   const root = document.getElementById("view-root");
+  if (!root) return console.warn("Reflex: #view-root not found — hard-refresh to fix.");
   if (state.user.role === "retailer") return renderRetailer(root);
   if (state.user.role === "dispatcher") return renderDispatcher(root);
   if (state.user.role === "rider") return renderRider(root);
