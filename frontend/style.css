@@ -14,6 +14,17 @@
 
 html { -webkit-text-size-adjust: 100%; }
 
+/* Self-hosted stroke-icon set (see icon() in app.js) — inherits color
+   from whatever text it sits next to, so a single rule covers every
+   usage (buttons, headings, badges) without per-context overrides. */
+.icon {
+  display: inline-block;
+  vertical-align: -3px;
+  flex-shrink: 0;
+  margin-right: 6px;
+}
+.icon:last-child { margin-right: 0; }
+
 body {
   margin: 0;
   /* Inter — via the ui-ux-pro-max skill's typography data: "Minimal Swiss"
