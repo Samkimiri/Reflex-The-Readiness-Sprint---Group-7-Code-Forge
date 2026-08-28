@@ -8,6 +8,11 @@ const fs = require("node:fs");
 // Isolate from local dev data (backend/data/db.json) by pointing at the
 // same tmpdir-backed store Vercel uses, cleared first for a clean run.
 process.env.VERCEL = "1";
+// Raises (not disables) the /api/auth rate limit — see server.js. This
+// suite makes 30+ register/login calls across its full run, all from
+// the same address, which is exactly what that limiter is designed to
+// catch in production; here it's just test volume.
+process.env.NODE_ENV = "test";
 const tmpDbFile = path.join(os.tmpdir(), "reflex-db.json");
 if (fs.existsSync(tmpDbFile)) fs.rmSync(tmpDbFile);
 
@@ -504,4 +509,84 @@ test("delivery chat: involved parties can read/post, admin is read-only, outside
     body: { body: "x".repeat(2001) },
   });
   assert.equal(tooLong.status, 400);
+});
+
+test("password change requires the current password and enforces a minimum length", async () => {
+  const suffix = Date.now();
+  const email = `pwchange-${suffix}@example.com`;
+  const reg = await api("/api/auth/register", {
+    method: "POST",
+    body: { name: "PW Change", phone: `0781${suffix % 1000000}`, email, password: "originalpw", role: "rider" },
+  });
+  const token = reg.data.token;
+
+  const wrongCurrent = await api("/api/users/me/password", {
+    method: "PATCH",
+    token,
+    body: { currentPassword: "not-it", newPassword: "brandnewpw" },
+  });
+  assert.equal(wrongCurrent.status, 401);
+
+  const tooShort = await api("/api/users/me/password", {
+    method: "PATCH",
+    token,
+    body: { currentPassword: "originalpw", newPassword: "abc" },
+  });
+  assert.equal(tooShort.status, 400);
+
+  const missingCurrent = await api("/api/users/me/password", {
+    method: "PATCH",
+    token,
+    body: { newPassword: "brandnewpw" },
+  });
+  assert.equal(missingCurrent.status, 401);
+
+  const success = await api("/api/users/me/password", {
+    method: "PATCH",
+    token,
+    body: { currentPassword: "originalpw", newPassword: "brandnewpw" },
+  });
+  assert.equal(success.status, 200);
+
+  // Old password no longer works; new one does
+  const loginOld = await api("/api/auth/login", { method: "POST", body: { email, password: "originalpw" } });
+  assert.equal(loginOld.status, 401);
+  const loginNew = await api("/api/auth/login", { method: "POST", body: { email, password: "brandnewpw" } });
+  assert.equal(loginNew.status, 200);
+});
+
+test("public tracking page works with no auth, rejects unknown tokens, and leaks no PII beyond what's needed", async () => {
+  const suffix = Date.now();
+  const retailer = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Track Retailer", phone: `0791${suffix % 1000000}`, email: `trackr-${suffix}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+
+  const created = await api("/api/deliveries", {
+    method: "POST",
+    token: retailer.token,
+    body: { customer_name: "Track Customer", customer_phone: "0700123123", address: "Track Address, Nairobi", item_description: "Trackable Widget" },
+  });
+  assert.equal(created.status, 201);
+  const qrToken = created.data.qr_code;
+  assert.ok(qrToken, "the owning retailer's own create-delivery response should include qr_code");
+
+  // No Authorization header at all — this must work
+  const track = await api(`/api/track/${qrToken}`);
+  assert.equal(track.status, 200);
+  assert.equal(track.data.item_description, "Trackable Widget");
+  assert.equal(track.data.status, "requested");
+  assert.equal(track.data.retailer_name, "Track Retailer");
+  assert.ok(Array.isArray(track.data.history));
+  assert.equal(track.data.history.length, 1);
+  assert.equal(track.data.history[0].status, "requested");
+
+  // Customer phone is deliberately not exposed on the public page
+  assert.equal(track.data.customer_phone, undefined);
+
+  // Unknown token -> 404, not a 401/500 that would hint at anything else
+  const unknown = await api("/api/track/not-a-real-token-at-all");
+  assert.equal(unknown.status, 404);
 });

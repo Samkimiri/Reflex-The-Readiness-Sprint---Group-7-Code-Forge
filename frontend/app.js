@@ -354,6 +354,94 @@ function toast(msg, isError = false) {
   start();
 })();
 
+// ---------- Login screen language toggle (English / Swahili) ----------
+// Scoped to the login screen only — the retailer/dispatcher/rider
+// dashboards aren't translated. Full-app localization would mean
+// wrapping every string in every render*() template across app.js, a
+// much bigger and more error-prone undertaking than one work session
+// should attempt; the login screen is a self-contained, honestly
+// achievable slice, and it's also literally the first thing a Swahili-
+// speaking retailer sees. Translations below are a best effort, not
+// verified by a native speaker — flag any that read oddly.
+const TRANSLATIONS = {
+  en: {
+    heroTagline: 'Delivery coordination built for Kenyan retailers — from "log it" to "it\'s there," with proof at every step.',
+    slideRetailerRole: "Retailer",
+    slideRetailerCaption: "Logs what's going out, to whom, and where — takes seconds, no paperwork.",
+    slideDispatcherRole: "Dispatcher",
+    slideDispatcherCaption: "Sees every open request and hands it to whichever rider is free.",
+    slideRiderRole: "Rider",
+    slideRiderCaption: "Confirms drop-off with a QR scan — proof, not just a claim.",
+    authTagline: "Delivery coordination for Kenyan retailers",
+    guideLink: "New here? See how it works",
+    installLink: "Install this app",
+    emailLabel: "Email",
+    passwordLabel: "Password",
+    logInBtn: "Log in",
+    fullNameLabel: "Full name",
+    phoneLabel: "Phone",
+    iAmALabel: "I am a...",
+    selectRoleOption: "Select role",
+    roleRetailerOption: "Retailer",
+    roleDispatcherOption: "Dispatcher",
+    roleRiderOption: "Rider",
+    createAccountBtn: "Create account",
+    newHereQ: "New here?",
+    createAnAccountBtn: "Create an account",
+    alreadyHaveQ: "Already have an account?",
+    tryDemoAccount: "Try a demo account",
+  },
+  sw: {
+    heroTagline: 'Uratibu wa usafirishaji ulioundwa kwa wafanyabiashara wa Kenya — kutoka "iandike" hadi "imefika," na uthibitisho kila hatua.',
+    slideRetailerRole: "Muuzaji",
+    slideRetailerCaption: "Anaandika kinachotoka, kwa nani, na wapi — inachukua sekunde, bila makaratasi.",
+    slideDispatcherRole: "Msambazaji",
+    slideDispatcherCaption: "Anaona kila ombi wazi na kumkabidhi rider yeyote aliye huru.",
+    slideRiderRole: "Rider",
+    slideRiderCaption: "Anathibitisha uwasilishaji kwa skani ya QR — uthibitisho, sio dai tu.",
+    authTagline: "Uratibu wa usafirishaji kwa wafanyabiashara wa Kenya",
+    guideLink: "Mgeni? Ona jinsi inavyofanya kazi",
+    installLink: "Sakinisha programu hii",
+    emailLabel: "Barua pepe",
+    passwordLabel: "Nenosiri",
+    logInBtn: "Ingia",
+    fullNameLabel: "Jina kamili",
+    phoneLabel: "Simu",
+    iAmALabel: "Mimi ni...",
+    selectRoleOption: "Chagua jukumu",
+    roleRetailerOption: "Muuzaji",
+    roleDispatcherOption: "Msambazaji",
+    roleRiderOption: "Rider",
+    createAccountBtn: "Fungua akaunti",
+    newHereQ: "Mgeni?",
+    createAnAccountBtn: "Fungua akaunti",
+    alreadyHaveQ: "Una akaunti tayari?",
+    tryDemoAccount: "Jaribu akaunti ya mfano",
+  },
+};
+
+function applyLanguage(lang) {
+  const dict = TRANSLATIONS[lang] || TRANSLATIONS.en;
+  document.querySelectorAll("[data-i18n]").forEach((el) => {
+    const text = dict[el.dataset.i18n];
+    if (text !== undefined) el.textContent = text;
+  });
+  document.querySelectorAll(".lang-btn").forEach((btn) => {
+    btn.classList.toggle("is-active", btn.dataset.lang === lang);
+  });
+  localStorage.setItem("reflex_lang", lang);
+}
+
+(function initLanguageToggle() {
+  const toggle = document.getElementById("lang-toggle");
+  if (!toggle) return;
+  toggle.querySelectorAll(".lang-btn").forEach((btn) => {
+    btn.addEventListener("click", () => applyLanguage(btn.dataset.lang));
+  });
+  const saved = localStorage.getItem("reflex_lang");
+  if (saved && TRANSLATIONS[saved]) applyLanguage(saved);
+})();
+
 const EMAIL_CHECK_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function wireEmailCheck(inputId, checkId) {
@@ -647,6 +735,13 @@ async function openProfileModal() {
       ${u.email ? `<div class="full"><label>Email</label><input value="${escapeHtml(u.email)}" disabled /></div>` : ""}
       <div class="full"><button class="btn btn-primary" type="submit">Save changes</button></div>
     </form>
+    <hr class="modal-divider" />
+    <h3>Change password</h3>
+    <form id="change-password-form" class="form-grid">
+      <div class="full"><label>Current password</label><input type="password" name="currentPassword" required /></div>
+      <div class="full"><label>New password</label><input type="password" name="newPassword" required minlength="6" /></div>
+      <div class="full"><button class="btn btn-secondary" type="submit">Update password</button></div>
+    </form>
   `);
   modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
 
@@ -680,6 +775,24 @@ async function openProfileModal() {
         updateTopbarIdentity();
         toast("Profile updated.");
         closeModal(modal);
+      } catch (err) {
+        toast(err.message, true);
+      }
+    });
+  });
+
+  modal.querySelector("#change-password-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const fd = new FormData(e.target);
+    const btn = e.target.querySelector('button[type="submit"]');
+    await withLoading(btn, "Updating…", async () => {
+      try {
+        await api("/users/me/password", {
+          method: "PATCH",
+          body: { currentPassword: fd.get("currentPassword"), newPassword: fd.get("newPassword") },
+        });
+        toast("Password updated.");
+        e.target.reset();
       } catch (err) {
         toast(err.message, true);
       }
@@ -1009,7 +1122,7 @@ async function renderRetailer(root) {
     });
   });
 
-  root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr)));
+  root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr, btn.dataset.qrToken)));
   root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
   root.querySelectorAll("[data-chat]").forEach((btn) => btn.addEventListener("click", () => openChatModal(btn.dataset.chat)));
   root.querySelectorAll("[data-cancel]").forEach((btn) =>
@@ -1158,7 +1271,7 @@ function retailerCard(d) {
         <div class="delivery-sub">Logged ${fmtTime(d.created_at)}</div>
       </div>
       <div class="delivery-actions">
-        ${d.status !== "delivered" && d.status !== "cancelled" ? `<button class="btn btn-secondary btn-sm" data-qr="${d.id}">Show QR</button>` : ""}
+        ${d.status !== "delivered" && d.status !== "cancelled" ? `<button class="btn btn-secondary btn-sm" data-qr="${d.id}" data-qr-token="${d.qr_code || ""}">Show QR</button>` : ""}
         <button class="btn btn-secondary btn-sm" data-history="${d.id}">History</button>
         <button class="btn btn-secondary btn-sm" data-chat="${d.id}">💬 Chat</button>
         ${["requested", "assigned"].includes(d.status) ? `<button class="btn btn-danger btn-sm" data-cancel="${d.id}">Cancel</button>` : ""}
@@ -1467,7 +1580,7 @@ async function renderAdmin(root) {
   `);
 
   root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
-  root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr)));
+  root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr, btn.dataset.qrToken)));
 }
 
 function adminDeliveryCard(d, usersById) {
@@ -1481,7 +1594,7 @@ function adminDeliveryCard(d, usersById) {
         <div class="delivery-sub">Retailer: ${escapeHtml(retailerName)}${riderName ? ` · Rider: ${escapeHtml(riderName)}` : ""}</div>
       </div>
       <div class="delivery-actions">
-        ${d.status !== "delivered" && d.status !== "cancelled" ? `<button class="btn btn-secondary btn-sm" data-qr="${d.id}">Show QR</button>` : ""}
+        ${d.status !== "delivered" && d.status !== "cancelled" ? `<button class="btn btn-secondary btn-sm" data-qr="${d.id}" data-qr-token="${d.qr_code || ""}">Show QR</button>` : ""}
         <button class="btn btn-secondary btn-sm" data-history="${d.id}">History</button>
       </div>
     </div>
@@ -1652,19 +1765,37 @@ function chatBubble(m) {
   `;
 }
 
-async function openQrModal(id) {
+async function openQrModal(id, qrToken) {
   // Feature-detected, not just hidden by CSS: most desktop browsers don't
   // implement the Web Share API at all, so the button is left out of the
   // markup entirely on those rather than rendered disabled/dead.
   const canShare = typeof navigator.share === "function";
+  // qrToken is the delivery's qr_code — only present when the caller (the
+  // owning retailer's or admin's own delivery list) actually has it; other
+  // viewers never see the raw token, so this section just doesn't render
+  // for them rather than showing a broken/empty link.
   const modal = openModal(`
     <button class="modal-close" data-close>&times;</button>
     <h3>Delivery QR Code</h3>
     <p style="font-size:13px;color:var(--muted)">Show this to the rider at drop-off. It's what turns "delivered" from a claim into proof.</p>
     <img class="qr-img" width="220" height="220" alt="Delivery QR code" />
     ${canShare ? `<button class="btn btn-secondary qr-share-btn" id="qr-share-btn" type="button" disabled>📤 Share</button>` : ""}
+    ${qrToken ? `<button class="btn btn-secondary qr-share-btn" id="qr-copy-link-btn" type="button">🔗 Copy tracking link for customer</button>` : ""}
   `);
   modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
+
+  const copyLinkBtn = modal.querySelector("#qr-copy-link-btn");
+  if (copyLinkBtn) {
+    copyLinkBtn.addEventListener("click", async () => {
+      const url = `${window.location.origin}/track/${qrToken}`;
+      try {
+        await navigator.clipboard.writeText(url);
+        toast("Tracking link copied — text it to your customer.");
+      } catch (e) {
+        toast(url, false); // clipboard blocked (e.g. insecure context) — show the link itself as a fallback
+      }
+    });
+  }
 
   // A plain <img src> can't carry the Authorization header the API requires,
   // so fetch it authenticated and render the result as a blob URL instead.

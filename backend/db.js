@@ -164,6 +164,15 @@ async function getDeliveryById(id) {
   return db.deliveries.find((d) => d.id === Number(id)) || null;
 }
 
+// Backs the public customer tracking page (GET /api/track/:token) — the
+// token IS the qr_code, already an opaque 128-bit value the retailer
+// controls distribution of (same one used for rider scan-confirmation),
+// so no new field/token type was needed just for tracking.
+async function getDeliveryByQrCode(qr_code) {
+  const db = await readDB();
+  return db.deliveries.find((d) => d.qr_code === qr_code) || null;
+}
+
 async function listDeliveries({ status, rider_id, retailer_id } = {}) {
   const db = await readDB();
   return db.deliveries.filter((d) => {
@@ -284,6 +293,7 @@ module.exports = {
   saveUser,
   createDelivery,
   getDeliveryById,
+  getDeliveryByQrCode,
   listDeliveries,
   saveDelivery,
   addStatusLog,

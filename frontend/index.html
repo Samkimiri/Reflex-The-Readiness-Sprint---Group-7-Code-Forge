@@ -25,7 +25,7 @@
  <div class="login-layout">
   <div class="login-hero">
     <div class="login-hero-brand">REFLEX</div>
-    <p class="login-hero-tagline">Delivery coordination built for Kenyan retailers — from "log it" to "it's there," with proof at every step.</p>
+    <p class="login-hero-tagline" data-i18n="heroTagline">Delivery coordination built for Kenyan retailers — from "log it" to "it's there," with proof at every step.</p>
     <div class="hero-status" id="hero-status">
       <span class="status-dot" id="hero-status-dot"></span>
       <span id="hero-status-text">Checking system status…</span>
@@ -33,18 +33,18 @@
     <div class="hero-slideshow" id="hero-slideshow">
       <div class="hero-slide is-active" data-role="retailer">
         <div class="hero-slide-icon">🏪</div>
-        <div class="hero-slide-role">Retailer</div>
-        <p class="hero-slide-caption">Logs what's going out, to whom, and where — takes seconds, no paperwork.</p>
+        <div class="hero-slide-role" data-i18n="slideRetailerRole">Retailer</div>
+        <p class="hero-slide-caption" data-i18n="slideRetailerCaption">Logs what's going out, to whom, and where — takes seconds, no paperwork.</p>
       </div>
       <div class="hero-slide" data-role="dispatcher">
         <div class="hero-slide-icon">🧭</div>
-        <div class="hero-slide-role">Dispatcher</div>
-        <p class="hero-slide-caption">Sees every open request and hands it to whichever rider is free.</p>
+        <div class="hero-slide-role" data-i18n="slideDispatcherRole">Dispatcher</div>
+        <p class="hero-slide-caption" data-i18n="slideDispatcherCaption">Sees every open request and hands it to whichever rider is free.</p>
       </div>
       <div class="hero-slide" data-role="rider">
         <div class="hero-slide-icon">🛵</div>
-        <div class="hero-slide-role">Rider</div>
-        <p class="hero-slide-caption">Confirms drop-off with a QR scan — proof, not just a claim.</p>
+        <div class="hero-slide-role" data-i18n="slideRiderRole">Rider</div>
+        <p class="hero-slide-caption" data-i18n="slideRiderCaption">Confirms drop-off with a QR scan — proof, not just a claim.</p>
       </div>
       <div class="hero-slide-dots" role="tablist" aria-label="Role slides">
         <button type="button" class="hero-dot is-active" data-slide-index="0" aria-label="Show retailer slide" aria-selected="true"></button>
@@ -54,10 +54,14 @@
     </div>
   </div>
   <div class="login-card">
+    <div class="lang-toggle" id="lang-toggle" role="group" aria-label="Language">
+      <button type="button" class="lang-btn is-active" data-lang="en">EN</button>
+      <button type="button" class="lang-btn" data-lang="sw">SW</button>
+    </div>
     <h1 class="login-card-brand">REFLEX</h1>
-    <p class="tagline" id="auth-tagline">Delivery coordination for Kenyan retailers</p>
-    <button type="button" id="guide-link" class="link-btn-inline guide-link">✨ New here? See how it works</button>
-    <button type="button" id="install-link-login" class="link-btn-inline install-link hidden">📲 Install this app</button>
+    <p class="tagline" id="auth-tagline" data-i18n="authTagline">Delivery coordination for Kenyan retailers</p>
+    <button type="button" id="guide-link" class="link-btn-inline guide-link">✨ <span data-i18n="guideLink">New here? See how it works</span></button>
+    <button type="button" id="install-link-login" class="link-btn-inline install-link hidden">📲 <span data-i18n="installLink">Install this app</span></button>
 
     <div id="google-btn-wrap" class="hidden">
       <div id="google-btn"></div>
@@ -65,58 +69,58 @@
     </div>
 
     <form id="login-form">
-      <label>Email</label>
+      <label data-i18n="emailLabel">Email</label>
       <div class="input-check-wrap">
         <input type="email" id="login-email" placeholder="you@example.com" required />
         <span class="input-check" id="login-email-check"></span>
       </div>
-      <label>Password</label>
+      <label data-i18n="passwordLabel">Password</label>
       <div class="password-field">
         <input type="password" id="login-password" placeholder="••••••••" required />
         <button type="button" class="password-toggle" data-toggle-for="login-password" aria-label="Show password">👁</button>
       </div>
-      <button type="submit">Log in</button>
+      <button type="submit" data-i18n="logInBtn">Log in</button>
       <p id="login-error" class="error"></p>
     </form>
 
     <form id="register-form" class="hidden">
-      <label>Full name</label>
+      <label data-i18n="fullNameLabel">Full name</label>
       <input type="text" name="name" required />
-      <label>Email</label>
+      <label data-i18n="emailLabel">Email</label>
       <div class="input-check-wrap">
         <input type="email" name="email" id="register-email" required />
         <span class="input-check" id="register-email-check"></span>
       </div>
-      <label>Phone</label>
+      <label data-i18n="phoneLabel">Phone</label>
       <input type="text" name="phone" required />
-      <label>Password</label>
+      <label data-i18n="passwordLabel">Password</label>
       <div class="password-field">
         <input type="password" name="password" id="register-password" required minlength="6" />
         <button type="button" class="password-toggle" data-toggle-for="register-password" aria-label="Show password">👁</button>
       </div>
       <div class="password-strength" id="password-strength"><div class="password-strength-bar"></div></div>
-      <label>I am a...</label>
+      <label data-i18n="iAmALabel">I am a...</label>
       <select name="role" required>
-        <option value="" disabled selected>Select role</option>
-        <option value="retailer">Retailer</option>
-        <option value="dispatcher">Dispatcher</option>
-        <option value="rider">Rider</option>
+        <option value="" disabled selected data-i18n="selectRoleOption">Select role</option>
+        <option value="retailer" data-i18n="roleRetailerOption">Retailer</option>
+        <option value="dispatcher" data-i18n="roleDispatcherOption">Dispatcher</option>
+        <option value="rider" data-i18n="roleRiderOption">Rider</option>
       </select>
-      <button type="submit">Create account</button>
+      <button type="submit" data-i18n="createAccountBtn">Create account</button>
       <p id="register-error" class="error"></p>
     </form>
 
     <p class="switch-auth">
-      <span id="switch-to-register">New here? <button type="button" class="link-btn-inline" id="show-register-btn">Create an account</button></span>
-      <span id="switch-to-login" class="hidden">Already have an account? <button type="button" class="link-btn-inline" id="show-login-btn">Log in</button></span>
+      <span id="switch-to-register"><span data-i18n="newHereQ">New here?</span> <button type="button" class="link-btn-inline" id="show-register-btn" data-i18n="createAnAccountBtn">Create an account</button></span>
+      <span id="switch-to-login" class="hidden"><span data-i18n="alreadyHaveQ">Already have an account?</span> <button type="button" class="link-btn-inline" id="show-login-btn" data-i18n="logInBtn">Log in</button></span>
     </p>
 
     <details class="demo-accounts" id="demo-accounts">
-      <summary class="demo-toggle">🔑 Try a demo account</summary>
+      <summary class="demo-toggle">🔑 <span data-i18n="tryDemoAccount">Try a demo account</span></summary>
       <div class="demo-list">
-        <button class="demo-btn" data-email="retailer@reflex.demo" data-pass="retailer123">🏪 Retailer — retailer@reflex.demo / retailer123</button>
-        <button class="demo-btn" data-email="dispatcher@reflex.demo" data-pass="dispatch123">🧭 Dispatcher — dispatcher@reflex.demo / dispatch123</button>
-        <button class="demo-btn" data-email="rider@reflex.demo" data-pass="rider123">🛵 Rider — rider@reflex.demo / rider123</button>
+        <button class="demo-btn" data-email="retailer@reflex.demo" data-pass="retailer123">🏪 <span data-i18n="roleRetailerOption">Retailer</span> — retailer@reflex.demo / retailer123</button>
+        <button class="demo-btn" data-email="dispatcher@reflex.demo" data-pass="dispatch123">🧭 <span data-i18n="roleDispatcherOption">Dispatcher</span> — dispatcher@reflex.demo / dispatch123</button>
+        <button class="demo-btn" data-email="rider@reflex.demo" data-pass="rider123">🛵 <span data-i18n="roleRiderOption">Rider</span> — rider@reflex.demo / rider123</button>
       </div>
     </details>
   </div>

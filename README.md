@@ -117,6 +117,22 @@ no repeat prompt. If the Google account's email matches an existing
 email/password account, that account is linked instead of creating a
 duplicate.
 
+## Language toggle (English / Swahili)
+
+An **EN / SW** toggle sits at the top of the login card — Reflex is
+built for Kenyan retailers, so a first-language option on the very
+first screen someone sees matters more than translating the whole app.
+It's a plain JS dictionary (`TRANSLATIONS` in `app.js`) hydrating every
+`data-i18n`-tagged element on the login screen (hero tagline, the
+role-showcase slideshow, form labels, buttons, the demo-accounts
+toggle) — no i18n library, consistent with the rest of this app's
+zero-unnecessary-dependency approach. The choice is saved to
+`localStorage` and re-applied on load, so it persists across visits and
+reloads. Scoped deliberately to just the login screen rather than the
+full authenticated app: that's the highest-value spot (it's what a
+brand-new visitor sees before they've even signed in) without taking on
+translating every dashboard string for a prototype.
+
 ## Admin oversight dashboard
 
 A fourth role, `admin`, exists purely to answer "is the prototype actually
@@ -178,6 +194,23 @@ consistent with it already being excluded from self-registration and the
 public demo logins (see `backend/seed.js`), it's an oversight account,
 not a normal user profile.
 
+### Changing your password
+
+The same profile modal has a "Change password" section underneath the
+name/phone/photo form — `PATCH /api/users/me/password`, deliberately its
+own endpoint and route handler rather than folded into the profile-edit
+one above, since it needs different rules: it requires the *current*
+password (bcrypt-compared server-side, not just trusted from the client)
+before accepting a new one, and the new password has the same
+minimum-length check as registration. One edge case is handled
+explicitly: a Google-only account has no `password_hash` yet, so for
+that account current-password verification is skipped — this doubles as
+"set a password for the first time" rather than "change" one, since
+there's nothing to verify against. On success the form clears and shows
+a confirmation toast; the modal itself stays open (consistent with every
+other in-modal save in this app) so you can keep editing or close it
+yourself.
+
 ## Delivery chat
 
 Every delivery card (retailer, dispatcher, rider) has a "💬 Chat" button
@@ -204,6 +237,29 @@ feature. The poll only runs while a chat modal is actually open — not as
 a constant background cost — and is torn down the moment the modal
 closes, however it closes (the ✕ button, clicking the backdrop, or
 opening a different modal on top of it).
+
+## Customer tracking page
+
+Every delivery's QR token doubles as a public tracking link — no second
+token type, no login required. From the retailer's "Show QR" modal, a
+"🔗 Copy tracking link for customer" button (shown once the delivery has
+a `qr_code`) copies `https://<your-deploy>/track/<token>` to the
+clipboard, ready to text or share straight to the customer. That URL
+opens a standalone page (`frontend/track.html` /
+`frontend/track.js`, no dependency on the main app's auth/state) showing
+the item, delivery address, current status, and the full status
+timeline, polling every 10s so it reflects reality without a refresh.
+
+The backing route, `GET /api/track/:token` (`backend/routes/track.js`),
+is mounted **before** `requireAuth` with its own rate limiter
+(`trackLimiter`, separate from the auth limiter) — it's intentionally
+public, since the whole point is a customer with no Reflex account
+being able to open it. What it returns is deliberately minimal: item
+description, address, customer *name* (not phone — that stays
+internal), status, retailer name, and the history timeline. An unknown
+or mistyped token gets a generic 404 rather than a distinct
+"invalid token" vs. "not found" response, so a guess can't be used to
+probe which tokens are real.
 
 ## Demoing the QR scan
 
@@ -392,12 +448,15 @@ backend/
   routes/auth.js      register, login
   routes/deliveries.js create, list, assign, status, scan, QR image, chat
   routes/users.js      list riders (for the dispatcher's assign dropdown),
-                       self-service profile edit (PATCH /users/me)
+                       self-service profile edit + password change
   routes/products.js   a retailer's product catalog (create, list, edit, delete)
+  routes/track.js      public, unauthenticated delivery tracking lookup
 frontend/
   index.html
   style.css
   app.js             all three role views + QR scan modal
+  track.html          standalone public tracking page (no auth)
+  track.js            fetches + renders /api/track/:token, polls every 10s
 ```
 
 Dependencies live in a single root `package.json` (not one per folder) so

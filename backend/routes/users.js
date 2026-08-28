@@ -1,4 +1,5 @@
 const express = require("express");
+const bcrypt = require("bcryptjs");
 const { readDB, findUserByPhone, saveUser } = require("../db");
 
 const router = express.Router();
@@ -62,6 +63,26 @@ router.patch("/me", async (req, res) => {
 
   const saved = await saveUser(req.user);
   res.json(publicUser(saved));
+});
+
+// PATCH /api/users/me/password  { currentPassword?, newPassword }
+// currentPassword is required unless the account has no password hash
+// yet (a Google-only sign-in) — in that case this doubles as "set a
+// password for the first time" rather than "change" one, since there's
+// nothing to verify against.
+router.patch("/me/password", async (req, res) => {
+  const { currentPassword, newPassword } = req.body || {};
+  if (!newPassword || newPassword.length < 6) {
+    return res.status(400).json({ error: "New password must be at least 6 characters." });
+  }
+  if (req.user.password_hash) {
+    if (!currentPassword || !bcrypt.compareSync(currentPassword, req.user.password_hash)) {
+      return res.status(401).json({ error: "Current password is incorrect." });
+    }
+  }
+  req.user.password_hash = bcrypt.hashSync(newPassword, 10);
+  await saveUser(req.user);
+  res.json({ ok: true });
 });
 
 function publicUser(u) {
