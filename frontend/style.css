@@ -16,7 +16,11 @@ html { -webkit-text-size-adjust: 100%; }
 
 body {
   margin: 0;
-  font-family: -apple-system, "Segoe UI", Calibri, Arial, sans-serif;
+  /* Inter — via the ui-ux-pro-max skill's typography data: "Minimal Swiss"
+     pairing, tagged for "Dashboards, admin panels, ... enterprise apps",
+     which is exactly this app's category. System-font fallback stays in
+     case the Google Fonts request is ever blocked/slow. */
+  font-family: "Inter", -apple-system, "Segoe UI", Calibri, Arial, sans-serif;
   background: var(--bg);
   color: var(--text);
   /* Standalone/PWA mode can sit under a notch or home-indicator area. */

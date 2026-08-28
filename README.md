@@ -254,6 +254,12 @@ opening a different modal on top of it).
   toggle on every password field, JWT, bcrypt password hashing, optional
   Google sign-in)
 - Automated tests (`npm test`) and a `GET /api/health` liveness endpoint
+- Typography: Inter (Google Fonts), replacing the system-font stack —
+  chosen via the `ui-ux-pro-max` design skill's typography data, which
+  tags it for "Dashboards, admin panels, ... enterprise apps", matching
+  this app's category. CSP updated to allow `fonts.googleapis.com` /
+  `fonts.gstatic.com`; system fonts remain the fallback if that ever
+  fails to load
 - All four role dashboards (Retailer, Dispatcher, Rider, admin oversight),
   including a retailer product catalog (with photos) wired into delivery
   creation

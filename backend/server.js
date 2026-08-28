@@ -30,7 +30,8 @@ app.use(
       directives: {
         defaultSrc: ["'self'"],
         scriptSrc: ["'self'", "https://cdnjs.cloudflare.com", "https://accounts.google.com"],
-        styleSrc: ["'self'", "'unsafe-inline'"], // inline `style="..."` attributes in a few modals
+        styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"], // inline `style="..."` attributes in a few modals + the Inter stylesheet
+        fontSrc: ["'self'", "https://fonts.gstatic.com"], // the actual Inter font files, served from Google's font CDN
         imgSrc: ["'self'", "data:", "blob:", "https://*.gstatic.com", "https://accounts.google.com"],
         connectSrc: ["'self'", "https://accounts.google.com"],
         frameSrc: ["https://accounts.google.com"],
