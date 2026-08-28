@@ -166,7 +166,7 @@ async function refreshPendingBadge(root) {
       badge.title = "Will send automatically once you're back online";
       actions.insertBefore(badge, actions.firstChild);
     }
-    badge.innerHTML = `${icon("pending")}${queued.length} pending sync`;
+    badge.textContent = `⏳ ${queued.length} pending sync`;
   } else if (badge) {
     badge.remove();
   }
@@ -279,7 +279,7 @@ async function openInstallPromptModal() {
 
 function toast(msg, isError = false) {
   const el = document.getElementById("toast");
-  el.innerHTML = `<span class="toast-icon">${icon(isError ? "warning" : "check")}</span>${escapeHtml(msg)}`;
+  el.innerHTML = `<span class="toast-icon">${isError ? "⚠️" : "✅"}</span>${escapeHtml(msg)}`;
   el.classList.toggle("error", isError);
   el.classList.remove("hidden");
   clearTimeout(toast._t);
@@ -382,7 +382,7 @@ document.querySelectorAll(".password-toggle").forEach((btn) => {
     if (!input) return;
     const showing = input.type === "text";
     input.type = showing ? "password" : "text";
-    btn.innerHTML = icon(showing ? "eye" : "eyeOff");
+    btn.textContent = showing ? "👁" : "🙈";
     btn.setAttribute("aria-label", showing ? "Show password" : "Hide password");
   });
 });
@@ -392,10 +392,10 @@ on("guide-link", "click", openGuideModal);
 
 function openGuideModal() {
   const steps = [
-    { icon: "pencil", role: "Retailer", title: "Log a delivery", desc: "A shop owner logs what's going out, to whom, and where — takes seconds, no paperwork." },
-    { icon: "compass", role: "Dispatcher", title: "Assign a rider", desc: "The dispatch desk sees every open request and hands it to whoever's free." },
-    { icon: "scooter", role: "Rider", title: "Pick it up", desc: "The rider taps \"Mark Picked Up\" the moment they've physically got the item." },
-    { icon: "check", role: "Rider + Retailer", title: "Scan to confirm", desc: "Delivery isn't \"done\" until the rider scans the retailer's QR code — proof, not just a claim." },
+    { icon: "📝", role: "Retailer", title: "Log a delivery", desc: "A shop owner logs what's going out, to whom, and where — takes seconds, no paperwork." },
+    { icon: "🧭", role: "Dispatcher", title: "Assign a rider", desc: "The dispatch desk sees every open request and hands it to whoever's free." },
+    { icon: "🛵", role: "Rider", title: "Pick it up", desc: "The rider taps \"Mark Picked Up\" the moment they've physically got the item." },
+    { icon: "✅", role: "Rider + Retailer", title: "Scan to confirm", desc: "Delivery isn't \"done\" until the rider scans the retailer's QR code — proof, not just a claim." },
   ];
 
   const modal = openModal(`
@@ -405,7 +405,7 @@ function openGuideModal() {
     <div class="guide-steps">
       ${steps.map((s) => `
         <div class="guide-step">
-          <div class="guide-step-icon">${icon(s.icon, { size: 20 })}</div>
+          <div class="guide-step-icon">${s.icon}</div>
           <div class="guide-step-body">
             <div class="guide-step-title">${escapeHtml(s.title)}<span class="guide-step-role">${escapeHtml(s.role)}</span></div>
             <div class="guide-step-desc">${escapeHtml(s.desc)}</div>
@@ -414,7 +414,7 @@ function openGuideModal() {
       `).join("")}
     </div>
     <div class="guide-tip">
-      <strong>Try it live:</strong> pick a demo account below, then open this same site in an incognito
+      💡 <strong>Try it live:</strong> pick a demo account below, then open this same site in an incognito
       window (or another tab) and log in as a different role. Watch one delivery move through the whole
       relay in real time — that's the actual point of this prototype.
     </div>
@@ -812,13 +812,13 @@ async function renderRetailer(root) {
       <div><h2>Retailer — Log &amp; Track Deliveries</h2>
       <p class="subtitle">Every delivery you log, and where it stands right now.</p></div>
       <div class="view-heading-actions">
-        ${queued.length ? `<span class="pending-badge" title="Will send automatically once you're back online">${icon("pending")}${queued.length} pending sync</span>` : ""}
-        <button class="btn btn-secondary btn-sm" id="retailer-refresh" type="button">${icon("refresh")}Refresh</button>
+        ${queued.length ? `<span class="pending-badge" title="Will send automatically once you're back online">⏳ ${queued.length} pending sync</span>` : ""}
+        <button class="btn btn-secondary btn-sm" id="retailer-refresh" type="button">🔄 Refresh</button>
       </div>
     </div>
 
     <div class="panel">
-      <h3>${icon("chart", { size: 18 })}At a glance</h3>
+      <h3>📊 At a glance</h3>
       <div class="stat-grid">
         ${statCard("Last 7 days", stats.last7Days, null, "deliveries logged")}
         ${statCard("Avg. delivery time", fmtDuration(stats.avgDeliveryMs), null, stats.deliveredCount ? `across ${stats.deliveredCount} delivered` : "no deliveries yet")}
@@ -848,7 +848,7 @@ async function renderRetailer(root) {
 
     <div class="panel">
       <div class="product-panel-head">
-        <h3>${icon("bag", { size: 18 })}Your catalog (${products.length})</h3>
+        <h3>🛍️ Your catalog (${products.length})</h3>
         <p class="subtitle">What you sell — pick any of these when logging a delivery above.</p>
       </div>
       <details class="add-product-toggle">
@@ -1110,7 +1110,7 @@ function retailerCard(d) {
       <div class="delivery-actions">
         ${d.status !== "delivered" && d.status !== "cancelled" ? `<button class="btn btn-secondary btn-sm" data-qr="${d.id}">Show QR</button>` : ""}
         <button class="btn btn-secondary btn-sm" data-history="${d.id}">History</button>
-        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">${icon("chat")}Chat</button>
+        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">💬 Chat</button>
         ${["requested", "assigned"].includes(d.status) ? `<button class="btn btn-danger btn-sm" data-cancel="${d.id}">Cancel</button>` : ""}
       </div>
     </div>
@@ -1233,7 +1233,7 @@ function dispatcherCard(d, riders) {
           ${riders.map((r) => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join("")}
         </select>
         <button class="btn btn-primary btn-sm" data-assign-btn="${d.id}">Assign</button>
-        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">${icon("chat")}Chat</button>
+        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">💬 Chat</button>
         <button class="btn btn-danger btn-sm" data-cancel="${d.id}">Cancel</button>
       </div>
     </div>
@@ -1249,7 +1249,7 @@ function inFlightCard(d) {
       </div>
       <div class="delivery-actions">
         <button class="btn btn-secondary btn-sm" data-history="${d.id}">History</button>
-        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">${icon("chat")}Chat</button>
+        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">💬 Chat</button>
       </div>
     </div>
   `;
@@ -1341,7 +1341,7 @@ function riderCard(d) {
         ${d.status === "assigned" ? `<button class="btn btn-primary btn-sm" data-pickup="${d.id}">Mark Picked Up</button>` : ""}
         ${d.status === "picked_up" ? `<button class="btn btn-primary btn-sm" data-scan="${d.id}">Scan to Confirm Delivery</button>` : ""}
         <button class="btn btn-secondary btn-sm" data-history="${d.id}">History</button>
-        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">${icon("chat")}Chat</button>
+        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">💬 Chat</button>
       </div>
     </div>
   `;
@@ -1612,7 +1612,7 @@ async function openQrModal(id) {
     <h3>Delivery QR Code</h3>
     <p style="font-size:13px;color:var(--muted)">Show this to the rider at drop-off. It's what turns "delivered" from a claim into proof.</p>
     <img class="qr-img" width="220" height="220" alt="Delivery QR code" />
-    ${canShare ? `<button class="btn btn-secondary qr-share-btn" id="qr-share-btn" type="button" disabled>${icon("share")}Share</button>` : ""}
+    ${canShare ? `<button class="btn btn-secondary qr-share-btn" id="qr-share-btn" type="button" disabled>📤 Share</button>` : ""}
   `);
   modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
 
@@ -1755,57 +1755,6 @@ async function confirmDelivery(deliveryId, qr_code, modal, after) {
     if (statusEl) statusEl.textContent = "That code didn't match — try again.";
   }
 }
-
-// ---------- icons ----------
-// Self-hosted stroke-icon set (24x24, Feather/Lucide-style) replacing the
-// emoji this UI used to lean on for buttons/badges/headings — per the
-// ui-ux-pro-max skill's own "no-emoji-icons: use SVG icons, not emoji"
-// rule. Hand-drawn rather than pulling in an icon package: this app has
-// no build step and no other runtime dependency, and ~20 simple line
-// icons don't justify adding one just for this. currentColor means each
-// icon inherits whatever color context it's placed in (button text,
-// heading text, etc.) with no extra CSS per usage. aria-hidden because
-// every usage sits directly beside its own visible text label already —
-// exactly the "decorative icon beside visible text" case the skill's own
-// accessibility data says belongs outside the a11y tree, not a case that
-// needs an aria-label of its own.
-const ICON_PATHS = {
-  shop: '<path d="M3 6l1.5-3h15L21 6"/><path d="M3 6a2 2 0 002 2 2 2 0 002-2 2 2 0 002 2 2 2 0 002-2 2 2 0 002 2 2 2 0 002-2 2 2 0 002 2 2 2 0 002-2"/><path d="M4 10v9a1 1 0 001 1h14a1 1 0 001-1v-9"/><path d="M10 20v-5h4v5"/>',
-  compass: '<circle cx="12" cy="12" r="9"/><path d="M15 9l-2 5-5 2 2-5z"/>',
-  scooter: '<circle cx="5.5" cy="17.5" r="2.5"/><circle cx="18.5" cy="17.5" r="2.5"/><path d="M5.5 17.5H12l2-8h3"/><path d="M12 17.5h6.5"/><path d="M9 9.5h4"/>',
-  package: '<path d="M21 8l-9-5-9 5 9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/><path d="M12 13v8"/>',
-  check: '<circle cx="12" cy="12" r="9"/><path d="M8 12.5l2.5 2.5 5-5.5"/>',
-  install: '<rect x="7" y="2" width="10" height="20" rx="2"/><path d="M9 9l3 3 3-3"/><path d="M12 18h.01"/>',
-  sparkle: '<path d="M12 3l1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3z"/>',
-  key: '<circle cx="8" cy="14.5" r="4.5"/><path d="M11.5 11L20 2.5"/><path d="M16.5 6L19 8.5"/><path d="M14 8.5L16 10.5"/>',
-  eye: '<path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/>',
-  eyeOff: '<path d="M2 12s3.5-7 10-7c1.6 0 3 .3 4.2.8M22 12s-1.2 2.4-3.4 4.3M9.9 9.9a3 3 0 104.2 4.2"/><path d="M3 3l18 18"/>',
-  user: '<circle cx="12" cy="8" r="4"/><path d="M4 20c0-4.4 3.6-7 8-7s8 2.6 8 7"/>',
-  bag: '<path d="M9 8V6a3 3 0 016 0v2"/><path d="M6 8h12l-1 12a2 2 0 01-2 2H9a2 2 0 01-2-2L6 8z"/>',
-  chart: '<path d="M4 20V10M12 20V4M20 20v-7M2 20h20"/>',
-  refresh: '<path d="M20 11A8 8 0 006.3 6.3L4 8.6"/><path d="M4 4v4.6h4.6"/><path d="M4 13a8 8 0 0013.7 4.7L20 15.4"/><path d="M20 20v-4.6h-4.6"/>',
-  bulb: '<path d="M12 2a7 7 0 00-4 12.7c.6.5 1 1.3 1 2.3h6c0-1 .4-1.8 1-2.3A7 7 0 0012 2z"/><path d="M9 18h6"/><path d="M10 22h4"/>',
-  pencil: '<path d="M4 21l4-1 12-12a2.1 2.1 0 00-3-3L5 17l-1 4z"/>',
-  warning: '<path d="M12 3l10 18H2L12 3z"/><path d="M12 10v4"/><path d="M12 17h.01"/>',
-  share: '<path d="M12 3v12"/><path d="M8 7l4-4 4 4"/><path d="M4 14v5a2 2 0 002 2h12a2 2 0 002-2v-5"/>',
-  chat: '<path d="M4 4h16v12H8l-4 4V4z"/>',
-  pending: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 3"/>',
-};
-
-function icon(name, { size = 16 } = {}) {
-  const paths = ICON_PATHS[name];
-  if (!paths) { console.warn(`Reflex: unknown icon "${name}"`); return ""; }
-  return `<svg class="icon" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths}</svg>`;
-}
-
-// Hydrates the handful of icons that live in static index.html markup
-// (login screen, topbar) rather than a JS template string — a
-// data-icon="name" placeholder instead of duplicating SVG path data in
-// two files. Runs once at script load; app.js is the last thing parsed
-// in <body>, so every [data-icon] element already exists by this point.
-document.querySelectorAll("[data-icon]").forEach((el) => {
-  el.innerHTML = icon(el.dataset.icon, { size: Number(el.dataset.iconSize) || 16 });
-});
 
 // ---------- utils ----------
 function escapeHtml(str) {

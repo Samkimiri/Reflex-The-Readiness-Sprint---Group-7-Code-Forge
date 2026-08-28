@@ -270,18 +270,6 @@ opening a different modal on top of it).
   in the corner so it never sits under real content) — per the
   `ui-ux-pro-max` skill's own "animate 1-2 elements max" and "honor
   prefers-reduced-motion" guidance, both already followed here
-- Icons: a small self-hosted SVG stroke-icon set (`ICON_PATHS`/`icon()`
-  in app.js) replacing the emoji this UI leaned on for buttons, badges,
-  and headings (🏪🧭🛵📊🛍️💬 etc.) — per the `ui-ux-pro-max` skill's own
-  "no-emoji-icons: use SVG icons, not emoji" rule. Applied selectively,
-  not 1:1: purely decorative emoji with no informational role (a sparkle
-  before "New here?", a key before "Try a demo account") were just
-  dropped rather than replaced, since the text alone already carries the
-  meaning — adding an icon there would be noise, not clarity. Static
-  HTML (login screen, topbar) uses `data-icon="name"` placeholders
-  hydrated from the same icon set on script load, so the SVG path data
-  has exactly one source of truth instead of being duplicated between
-  index.html and app.js
 - All four role dashboards (Retailer, Dispatcher, Rider, admin oversight),
   including a retailer product catalog (with photos) wired into delivery
   creation
