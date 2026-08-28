@@ -375,13 +375,19 @@ body {
   border-top: 1px solid var(--border);
 }
 
-.demo-title {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 1px;
-  color: var(--muted);
-  margin: 0 0 8px;
+.demo-toggle {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--teal-dark);
+  cursor: pointer;
+  list-style: none;
+  user-select: none;
 }
+.demo-toggle::-webkit-details-marker { display: none; }
+.demo-toggle:hover { color: var(--teal); }
+.demo-accounts[open] .demo-toggle { margin-bottom: 10px; }
+
+.demo-list { display: flex; flex-direction: column; }
 
 .demo-btn {
   display: block;

@@ -23,7 +23,12 @@ exercise it over HTTP — registration/login, role checks on every delivery
 transition, and the access-control rules described below.
 
 On first run it seeds three demo accounts — login is by **email**, not phone
-(phone is still collected and stored, just no longer the login identifier):
+(phone is still collected and stored, just no longer the login identifier).
+The credentials aren't dumped in plain sight on the login screen: they sit
+behind a "🔑 Try a demo account" toggle (a collapsed `<details>`, same
+pattern as the retailer's "+ Add a product" toggle) that a visitor has to
+deliberately open — a first impression of a real login screen, not a
+sandbox with the keys taped to the door.
 
 | Role       | Email                   | Password     |
 |------------|--------------------------|--------------|
