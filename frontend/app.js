@@ -639,7 +639,9 @@ async function openProfileModal() {
 
 function enterApp() {
   document.getElementById("login-screen")?.classList.add("hidden");
-  document.getElementById("app-screen")?.classList.remove("hidden");
+  const appScreen = document.getElementById("app-screen");
+  appScreen?.classList.remove("hidden");
+  if (appScreen) appScreen.dataset.role = state.user.role; // drives the per-role hero background, see style.css
   updateTopbarIdentity();
   // Fresh per-session: without this, logging out and back in as a
   // different dispatcher/rider would diff against the previous user's

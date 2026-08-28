@@ -260,6 +260,16 @@ opening a different modal on top of it).
   this app's category. CSP updated to allow `fonts.googleapis.com` /
   `fonts.gstatic.com`; system fonts remain the fallback if that ever
   fails to load
+- A per-role hero background: each dashboard (`#app-screen[data-role]`,
+  set in `enterApp()`) gets its own faint, slow-drifting SVG motif — a
+  product-catalog grid for the retailer, a hub-and-spoke network for the
+  dispatcher, an in-transit route for the rider, radar rings for admin
+  oversight — hand-drawn as self-hosted SVGs (`frontend/hero/`), no
+  external image host or new dependency. Kept to one subtle 40s drift
+  animation per view (opacity ~0.09, `pointer-events: none`, positioned
+  in the corner so it never sits under real content) — per the
+  `ui-ux-pro-max` skill's own "animate 1-2 elements max" and "honor
+  prefers-reduced-motion" guidance, both already followed here
 - All four role dashboards (Retailer, Dispatcher, Rider, admin oversight),
   including a retailer product catalog (with photos) wired into delivery
   creation

@@ -460,7 +460,50 @@ body {
 }
 .link-btn:hover { color: white; }
 
-main { max-width: 980px; margin: 0 auto; padding: 28px 20px 60px; }
+main { max-width: 980px; margin: 0 auto; padding: 28px 20px 60px; position: relative; z-index: 1; }
+
+/* ---------- Per-role hero background ---------- */
+/* One faint, slow-drifting background motif per role — set via
+   #app-screen[data-role] in enterApp() — so each dashboard reads as its
+   own place at a glance rather than four identical shells. Kept to a
+   single subtle animation per view (per the ui-ux-pro-max skill's own
+   "animate 1-2 elements max" guidance): low opacity so it never competes
+   with real content for attention or contrast, pointer-events: none so
+   it can never intercept a click, and the site-wide
+   prefers-reduced-motion override (top of this file) already freezes it
+   for anyone who's asked for that. */
+@keyframes heroDrift {
+  0%, 100% { transform: translate(0, 0) scale(1); }
+  50% { transform: translate(-2%, 2%) scale(1.04); }
+}
+
+#app-screen { position: relative; }
+#app-screen::before {
+  content: "";
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  pointer-events: none;
+  background-repeat: no-repeat;
+  /* Anchored with calc() off the viewport's top-right corner rather than
+     a background-position percentage: main's panels are full-width
+     (max-width: 980px, centered), so on common laptop widths (1280-1440px)
+     there's only ~150-230px of open margin either side — a percentage
+     placement mostly landed the motif underneath opaque panels, where
+     opacity wouldn't have mattered because none of it was visible at all.
+     Anchoring to the corner and letting it hang partly off-screen/behind
+     the topbar guarantees a consistently visible slice regardless of
+     viewport width, instead of depending on how much margin happens to
+     be left over. */
+  background-position: calc(100% - 20px) -40px;
+  background-size: 420px;
+  opacity: 0.09;
+  animation: heroDrift 40s ease-in-out infinite;
+}
+#app-screen[data-role="retailer"]::before { background-image: url("hero/retailer.svg"); }
+#app-screen[data-role="dispatcher"]::before { background-image: url("hero/dispatcher.svg"); }
+#app-screen[data-role="rider"]::before { background-image: url("hero/rider.svg"); }
+#app-screen[data-role="admin"]::before { background-image: url("hero/admin.svg"); }
 
 h2 { font-size: 20px; margin: 0 0 4px; }
 .subtitle { color: var(--muted); font-size: 13px; margin: 0 0 22px; }
@@ -1020,6 +1063,10 @@ video#scan-video { width: 100%; border-radius: 8px; background: #000; }
   main { padding: 20px 14px 50px; }
   .panel { padding: 16px; }
   .form-grid { grid-template-columns: 1fr; }
+
+  /* Smaller and centered-top on phones — at the desktop size/position it
+     would mostly sit off the right edge of a narrow viewport, wasted. */
+  #app-screen::before { background-size: 220px; background-position: calc(100% - 10px) -20px; }
 
   .topbar { padding-left: max(16px, env(safe-area-inset-left)); padding-right: max(16px, env(safe-area-inset-right)); }
   .who { font-size: 12px; gap: 8px; }
