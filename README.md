@@ -226,7 +226,11 @@ not a normal user profile.
   including a retailer product catalog (with photos) wired into delivery
   creation
 - A two-panel login/register screen (brand + feature highlights alongside
-  the form on wide viewports, collapsing to just the form on phones)
+  the form on wide viewports, collapsing to just the form on phones). The
+  brand panel is a frosted-glass (`backdrop-filter: blur`) surface over
+  the screen's radial-gradient background, so the glow blurs through it
+  instead of sitting under a flat fill — layered behind `@supports` with
+  a plain-gradient fallback for browsers without backdrop-filter support
 - Responsive layout tuned for phone-sized viewports and the installed-app
   window specifically (safe-area padding for notches/home indicators,
   collapsing grids, a topbar that wraps instead of clipping), plus hover

@@ -189,10 +189,30 @@ body {
   }
   .login-hero {
     display: flex;
+    /* Plain gradient fallback for browsers without backdrop-filter — the
+       glass treatment below is a progressive enhancement, not a
+       requirement, so this alone still looks intentional on its own. */
     background: linear-gradient(160deg, var(--teal) 0%, var(--teal-dark) 100%);
   }
   .login-card { border-radius: 0; box-shadow: none; flex: 1; }
   .login-card-brand { display: none; } /* the hero already shows the wordmark */
+}
+
+/* The hero sits on #login-screen's radial-gradient glow (see below) — a
+   frosted glass panel here lets that glow blur softly through instead of
+   a flat fill, real depth instead of decoration for its own sake. Scoped
+   behind @supports so unsupported browsers just keep the plain gradient
+   above rather than an unstyled/broken panel. */
+@media (min-width: 860px) {
+  @supports (backdrop-filter: blur(1px)) or (-webkit-backdrop-filter: blur(1px)) {
+    .login-hero {
+      background: linear-gradient(160deg, rgba(2,128,144,0.45) 0%, rgba(1,58,64,0.65) 100%);
+      backdrop-filter: blur(20px) saturate(150%);
+      -webkit-backdrop-filter: blur(20px) saturate(150%);
+      border-right: 1px solid rgba(255,255,255,0.14);
+      box-shadow: inset 0 1px 0 rgba(255,255,255,0.1);
+    }
+  }
 }
 
 .tagline {
