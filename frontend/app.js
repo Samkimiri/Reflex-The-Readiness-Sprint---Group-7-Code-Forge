@@ -959,6 +959,7 @@ async function renderRetailer(root) {
 
   root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr)));
   root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
+  root.querySelectorAll("[data-chat]").forEach((btn) => btn.addEventListener("click", () => openChatModal(btn.dataset.chat)));
   root.querySelectorAll("[data-cancel]").forEach((btn) =>
     btn.addEventListener("click", () => cancelDelivery(btn, btn.dataset.cancel, () => renderRetailer(root)))
   );
@@ -1107,6 +1108,7 @@ function retailerCard(d) {
       <div class="delivery-actions">
         ${d.status !== "delivered" && d.status !== "cancelled" ? `<button class="btn btn-secondary btn-sm" data-qr="${d.id}">Show QR</button>` : ""}
         <button class="btn btn-secondary btn-sm" data-history="${d.id}">History</button>
+        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">💬 Chat</button>
         ${["requested", "assigned"].includes(d.status) ? `<button class="btn btn-danger btn-sm" data-cancel="${d.id}">Cancel</button>` : ""}
       </div>
     </div>
@@ -1173,10 +1175,12 @@ async function renderDispatcher(root, opts = {}) {
     root.querySelectorAll("#dispatcher-open-list [data-cancel]").forEach((btn) =>
       btn.addEventListener("click", () => cancelDelivery(btn, btn.dataset.cancel, () => renderDispatcher(root, { silent: true })))
     );
+    root.querySelectorAll("#dispatcher-open-list [data-chat]").forEach((btn) => btn.addEventListener("click", () => openChatModal(btn.dataset.chat)));
   }
 
   function wireInFlightList() {
     root.querySelectorAll("#dispatcher-inflight-list [data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
+    root.querySelectorAll("#dispatcher-inflight-list [data-chat]").forEach((btn) => btn.addEventListener("click", () => openChatModal(btn.dataset.chat)));
   }
 
   function renderLists() {
@@ -1227,6 +1231,7 @@ function dispatcherCard(d, riders) {
           ${riders.map((r) => `<option value="${r.id}">${escapeHtml(r.name)}</option>`).join("")}
         </select>
         <button class="btn btn-primary btn-sm" data-assign-btn="${d.id}">Assign</button>
+        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">💬 Chat</button>
         <button class="btn btn-danger btn-sm" data-cancel="${d.id}">Cancel</button>
       </div>
     </div>
@@ -1242,6 +1247,7 @@ function inFlightCard(d) {
       </div>
       <div class="delivery-actions">
         <button class="btn btn-secondary btn-sm" data-history="${d.id}">History</button>
+        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">💬 Chat</button>
       </div>
     </div>
   `;
@@ -1290,6 +1296,7 @@ async function renderRider(root, opts = {}) {
     });
     root.querySelectorAll("#rider-list [data-scan]").forEach((btn) => btn.addEventListener("click", () => openScanModal(btn.dataset.scan, () => renderRider(root, { silent: true }))));
     root.querySelectorAll("#rider-list [data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
+    root.querySelectorAll("#rider-list [data-chat]").forEach((btn) => btn.addEventListener("click", () => openChatModal(btn.dataset.chat)));
   }
 
   function renderList() {
@@ -1332,6 +1339,7 @@ function riderCard(d) {
         ${d.status === "assigned" ? `<button class="btn btn-primary btn-sm" data-pickup="${d.id}">Mark Picked Up</button>` : ""}
         ${d.status === "picked_up" ? `<button class="btn btn-primary btn-sm" data-scan="${d.id}">Scan to Confirm Delivery</button>` : ""}
         <button class="btn btn-secondary btn-sm" data-history="${d.id}">History</button>
+        <button class="btn btn-secondary btn-sm" data-chat="${d.id}">💬 Chat</button>
       </div>
     </div>
   `;
@@ -1494,9 +1502,102 @@ function openModal(html) {
 }
 function closeModal(backdrop) {
   stopScanner();
+  // Only one modal is ever open at a time in this app, so unconditionally
+  // clearing the chat poll here (rather than only from the chat modal's
+  // own close button) covers every way a modal can close — the [x]
+  // button, clicking the backdrop, or opening a different modal on top.
+  clearInterval(activeChatPoll);
+  activeChatPoll = null;
   const img = backdrop.querySelector(".qr-img");
   if (img && img.dataset.blobUrl) URL.revokeObjectURL(img.dataset.blobUrl);
   backdrop.remove();
+}
+
+// ---------- Delivery chat ----------
+// Polling rather than WebSockets/SSE — same call this app already made for
+// the dashboard auto-refresh (see the trade-off log): this runs on Vercel
+// serverless functions, which don't hold a persistent connection open
+// between invocations, so a real push channel would mean standing up
+// separate always-on infrastructure just for chat. A 3s poll — tighter
+// than the 5s dashboard poll, since a live conversation is more
+// latency-sensitive than a delivery list — gets messages showing up
+// "live enough" without any of that, and it only runs while this modal is
+// actually open, not as a constant background cost.
+let activeChatPoll = null;
+
+async function openChatModal(deliveryId) {
+  const modal = openModal(`
+    <button class="modal-close" data-close>&times;</button>
+    <h3>Delivery Chat</h3>
+    <div class="chat-messages" id="chat-messages"><div class="empty-state">Loading…</div></div>
+    <form id="chat-form" class="chat-form">
+      <input type="text" id="chat-input" placeholder="Type a message…" maxlength="2000" autocomplete="off" required />
+      <button class="btn btn-primary btn-sm" type="submit">Send</button>
+    </form>
+  `);
+  modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
+
+  const messagesEl = modal.querySelector("#chat-messages");
+  let lastRenderedIds = "";
+
+  async function loadMessages({ initial = false } = {}) {
+    let messages;
+    try {
+      messages = await api(`/deliveries/${deliveryId}/messages`);
+    } catch (e) {
+      if (initial) messagesEl.innerHTML = `<div class="empty-state">${escapeHtml(e.message)}</div>`;
+      return;
+    }
+    if (!messagesEl.isConnected) return; // modal closed while this fetch was in flight
+
+    // Skip re-rendering (and the scroll-position dance below) on ticks
+    // where nothing actually changed — a poll every 3s shouldn't reset
+    // scroll or flicker if no one's said anything new.
+    const signature = messages.map((m) => m.id).join(",");
+    if (!initial && signature === lastRenderedIds) return;
+    lastRenderedIds = signature;
+
+    const wasNearBottom = messagesEl.scrollHeight - messagesEl.scrollTop - messagesEl.clientHeight < 60;
+    messagesEl.innerHTML = messages.length
+      ? messages.map(chatBubble).join("")
+      : `<div class="empty-state">No messages yet — say hello.</div>`;
+    if (initial || wasNearBottom) messagesEl.scrollTop = messagesEl.scrollHeight;
+  }
+
+  await loadMessages({ initial: true });
+  clearInterval(activeChatPoll);
+  activeChatPoll = setInterval(loadMessages, 3000);
+
+  modal.querySelector("#chat-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const input = modal.querySelector("#chat-input");
+    const body = input.value.trim();
+    if (!body) return;
+    const btn = e.target.querySelector('button[type="submit"]');
+    await withLoading(btn, "", async () => {
+      input.value = "";
+      try {
+        await api(`/deliveries/${deliveryId}/messages`, { method: "POST", body: { body } });
+        await loadMessages();
+      } catch (err) {
+        toast(err.message, true);
+        input.value = body; // don't make them retype it
+      }
+    });
+  });
+}
+
+function chatBubble(m) {
+  const mine = m.sender_id === state.user.id;
+  return `
+    <div class="chat-row${mine ? " chat-row-mine" : ""}">
+      <div class="chat-bubble">
+        <div class="chat-bubble-meta">${escapeHtml(m.sender_name)} <span class="role-pill role-${m.sender_role}">${escapeHtml(m.sender_role || "")}</span></div>
+        <div class="chat-bubble-body">${escapeHtml(m.body)}</div>
+        <div class="chat-bubble-time">${fmtTime(m.created_at)}</div>
+      </div>
+    </div>
+  `;
 }
 
 async function openQrModal(id) {

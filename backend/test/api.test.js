@@ -397,3 +397,111 @@ test("a user can edit their own profile; a duplicate phone is rejected", async (
   });
   assert.equal(badImage.status, 400);
 });
+
+test("delivery chat: involved parties can read/post, admin is read-only, outsiders get 404", async () => {
+  const suffix = Date.now();
+  const retailer = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Chat Retailer", phone: `0771${suffix % 1000000}`, email: `chatr-${suffix}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+  const dispatcher = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Chat Dispatcher", phone: `0772${suffix % 1000000}`, email: `chatd-${suffix}@example.com`, password: "testpass1", role: "dispatcher" },
+    })
+  ).data;
+  const rider = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Chat Rider", phone: `0773${suffix % 1000000}`, email: `chatri-${suffix}@example.com`, password: "testpass1", role: "rider" },
+    })
+  ).data;
+  const outsider = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Chat Outsider", phone: `0774${suffix % 1000000}`, email: `chato-${suffix}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+  const adminLogin = await api("/api/auth/login", {
+    method: "POST",
+    body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "5I9H3ifTmCMj" },
+  });
+
+  const created = await api("/api/deliveries", {
+    method: "POST",
+    token: retailer.token,
+    body: { customer_name: "Chat Cust", customer_phone: "0700111222", address: "Nairobi", item_description: "Chat Widget" },
+  });
+  const deliveryId = created.data.id;
+
+  // Before assignment: retailer and dispatcher can chat, an outsider cannot
+  const retailerMsg = await api(`/api/deliveries/${deliveryId}/messages`, {
+    method: "POST",
+    token: retailer.token,
+    body: { body: "Please pick this up soon" },
+  });
+  assert.equal(retailerMsg.status, 201);
+  assert.equal(retailerMsg.data.sender_name, "Chat Retailer");
+  assert.equal(retailerMsg.data.sender_role, "retailer");
+
+  const dispatcherMsg = await api(`/api/deliveries/${deliveryId}/messages`, {
+    method: "POST",
+    token: dispatcher.token,
+    body: { body: "On it" },
+  });
+  assert.equal(dispatcherMsg.status, 201);
+
+  const outsiderRead = await api(`/api/deliveries/${deliveryId}/messages`, { token: outsider.token });
+  assert.equal(outsiderRead.status, 404);
+  const outsiderPost = await api(`/api/deliveries/${deliveryId}/messages`, {
+    method: "POST",
+    token: outsider.token,
+    body: { body: "Sneaking in" },
+  });
+  assert.equal(outsiderPost.status, 404);
+
+  // Assign a rider, then confirm the rider can now chat too
+  await api(`/api/deliveries/${deliveryId}/assign`, {
+    method: "PATCH",
+    token: dispatcher.token,
+    body: { rider_id: rider.user.id },
+  });
+  const riderMsg = await api(`/api/deliveries/${deliveryId}/messages`, {
+    method: "POST",
+    token: rider.token,
+    body: { body: "On my way" },
+  });
+  assert.equal(riderMsg.status, 201);
+
+  const thread = await api(`/api/deliveries/${deliveryId}/messages`, { token: retailer.token });
+  assert.equal(thread.status, 200);
+  assert.equal(thread.data.length, 3);
+  assert.deepEqual(thread.data.map((m) => m.body), ["Please pick this up soon", "On it", "On my way"]);
+
+  // Admin can read (oversight) but not post
+  const adminRead = await api(`/api/deliveries/${deliveryId}/messages`, { token: adminLogin.data.token });
+  assert.equal(adminRead.status, 200);
+  const adminPost = await api(`/api/deliveries/${deliveryId}/messages`, {
+    method: "POST",
+    token: adminLogin.data.token,
+    body: { body: "Admin butting in" },
+  });
+  assert.equal(adminPost.status, 403);
+
+  // Validation
+  const emptyBody = await api(`/api/deliveries/${deliveryId}/messages`, {
+    method: "POST",
+    token: retailer.token,
+    body: { body: "   " },
+  });
+  assert.equal(emptyBody.status, 400);
+
+  const tooLong = await api(`/api/deliveries/${deliveryId}/messages`, {
+    method: "POST",
+    token: retailer.token,
+    body: { body: "x".repeat(2001) },
+  });
+  assert.equal(tooLong.status, 400);
+});

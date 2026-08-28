@@ -178,6 +178,33 @@ consistent with it already being excluded from self-registration and the
 public demo logins (see `backend/seed.js`), it's an oversight account,
 not a normal user profile.
 
+## Delivery chat
+
+Every delivery card (retailer, dispatcher, rider) has a "💬 Chat" button
+opening a per-delivery message thread — the retailer, any dispatcher, and
+the assigned rider (once one exists) can all read and post to it, so
+coordinating a specific delivery ("what time works for pickup?", "5 mins
+away") doesn't mean falling back to a phone call. Backed by
+`GET/POST /api/deliveries/:id/messages`, gated by the exact same
+`canViewDelivery()` check the delivery itself uses — no separate
+visibility rule to get wrong. Admin can read a thread (oversight, same as
+everywhere else in this app) but not post — consistent with admin being
+oversight-only throughout, not a participant in day-to-day coordination.
+
+**"Live" here means polling, not WebSockets — deliberately.** While a
+chat modal is open, the frontend polls its thread every 3s (tighter than
+the 5s dashboard poll, since a conversation is more latency-sensitive
+than a delivery list) and appends anything new; sending a message posts
+immediately and re-fetches. This is the same trade-off already made for
+the dashboard auto-refresh (see the trade-off log) applied to chat: the
+app runs on Vercel serverless functions, which don't hold a persistent
+connection open between invocations, so real push (WebSockets/SSE) would
+mean standing up separate always-on infrastructure just for this one
+feature. The poll only runs while a chat modal is actually open — not as
+a constant background cost — and is torn down the moment the modal
+closes, however it closes (the ✕ button, clicking the backdrop, or
+opening a different modal on top of it).
+
 ## Demoing the QR scan
 
 - As the **retailer**, click "Show QR" on a delivery once it's `picked_up`.
@@ -335,7 +362,7 @@ backend/
   seed.js            demo account seeding
   middleware/auth.js  JWT verification
   routes/auth.js      register, login
-  routes/deliveries.js create, list, assign, status, scan, QR image
+  routes/deliveries.js create, list, assign, status, scan, QR image, chat
   routes/users.js      list riders (for the dispatcher's assign dropdown),
                        self-service profile edit (PATCH /users/me)
   routes/products.js   a retailer's product catalog (create, list, edit, delete)

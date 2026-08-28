@@ -14,6 +14,7 @@
 //                   address, item_description, status, qr_code, created_at, updated_at
 //   status_log   -> id, delivery_id, changed_by, old_status, new_status, changed_at
 //   products     -> id, retailer_id, name, price, description, image, created_at
+//   messages     -> id, delivery_id, sender_id, body, created_at (per-delivery chat)
 //
 // Swapping this for real Postgres later means replacing readDB/writeDB (and
 // the KV key) with SQL queries — the rest of the app (routes, state machine)
@@ -43,7 +44,8 @@ function emptyDB() {
     deliveries: [],
     status_log: [],
     products: [],
-    seq: { users: 0, deliveries: 0, status_log: 0, products: 0 },
+    messages: [],
+    seq: { users: 0, deliveries: 0, status_log: 0, products: 0, messages: 0 },
   };
 }
 
@@ -250,6 +252,28 @@ async function saveProduct(updated) {
   return updated;
 }
 
+// ---------- messages (per-delivery chat between retailer/dispatcher/rider) ----------
+async function createMessage({ delivery_id, sender_id, body }) {
+  const db = await readDB();
+  const message = {
+    id: nextId(db, "messages"),
+    delivery_id,
+    sender_id,
+    body,
+    created_at: new Date().toISOString(),
+  };
+  db.messages.push(message);
+  await writeDB(db);
+  return message;
+}
+
+async function listMessages(delivery_id) {
+  const db = await readDB();
+  return db.messages
+    .filter((m) => m.delivery_id === Number(delivery_id))
+    .sort((a, b) => new Date(a.created_at) - new Date(b.created_at));
+}
+
 module.exports = {
   readDB,
   findUserByPhone,
@@ -269,4 +293,6 @@ module.exports = {
   deleteProduct,
   saveProduct,
   getStatusLog,
+  createMessage,
+  listMessages,
 };

@@ -841,6 +841,55 @@ h2 { font-size: 20px; margin: 0 0 4px; }
 .qr-share-btn { display: block; width: 100%; }
 .qr-share-btn:disabled { opacity: 0.6; cursor: default; }
 
+/* ---------- Delivery chat ---------- */
+.chat-messages {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 320px;
+  min-height: 120px;
+  overflow-y: auto;
+  padding: 4px 2px;
+  margin: 4px 0 14px;
+}
+
+.chat-row { display: flex; }
+.chat-row-mine { justify-content: flex-end; }
+
+.chat-bubble {
+  max-width: 82%;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 8px 12px;
+}
+.chat-row-mine .chat-bubble { background: #E4EEF0; border-color: #cfe0e2; }
+
+.chat-bubble-meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--muted);
+  margin-bottom: 3px;
+}
+.chat-bubble-meta .role-pill { padding: 1px 8px; font-size: 9px; }
+
+.chat-bubble-body { font-size: 13px; line-height: 1.4; word-break: break-word; }
+.chat-bubble-time { font-size: 10px; color: var(--muted); margin-top: 4px; text-align: right; }
+
+.chat-form { display: flex; gap: 8px; }
+.chat-form input {
+  flex: 1;
+  min-width: 0;
+  padding: 9px 12px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
 /* ---------- "How it works" guide ---------- */
 .guide-intro { font-size: 13px; color: var(--muted); line-height: 1.5; margin: 4px 0 20px; }
 
@@ -983,6 +1032,13 @@ video#scan-video { width: 100%; border-radius: 8px; background: #000; }
   .filter-bar select { width: 100%; }
 
   .modal { padding: 20px; }
+
+  /* 16px prevents iOS Safari's zoom-on-focus; 44px matches the touch-target
+     minimum used for the retailer view's mobile buttons — chat is used by
+     all three operational roles, plausibly one-handed mid-delivery, so it
+     gets the same treatment without being scoped to .retailer-view. */
+  .chat-form input { font-size: 16px; }
+  .chat-form .btn { min-height: 44px; }
 
   h2 { font-size: 18px; }
 

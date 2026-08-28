@@ -9,6 +9,8 @@ const {
   addStatusLog,
   getStatusLog,
   findUserById,
+  createMessage,
+  listMessages,
 } = require("../db");
 const { canTransition, assertRole, httpError } = require("../statusMachine");
 
@@ -180,6 +182,62 @@ router.get("/:id/qrcode.png", async (req, res) => {
   if (!canSeeToken(req.user, delivery)) return res.status(404).end();
   res.setHeader("Content-Type", "image/png");
   QRCode.toFileStream(res, delivery.qr_code, { width: 300, margin: 1 });
+});
+
+// GET /api/deliveries/:id/messages — per-delivery chat between whoever's
+// actually involved (the retailer, any dispatcher, the assigned rider).
+// Same visibility rule as the delivery itself, so there's no separate
+// IDOR surface to get wrong here.
+router.get("/:id/messages", async (req, res) => {
+  const delivery = await getDeliveryById(req.params.id);
+  if (!delivery) return res.status(404).json({ error: "Delivery not found." });
+  if (!canViewDelivery(req.user, delivery)) return res.status(404).json({ error: "Delivery not found." });
+
+  const raw = await listMessages(delivery.id);
+  const messages = await Promise.all(
+    raw.map(async (m) => {
+      const sender = await findUserById(m.sender_id);
+      return {
+        id: m.id,
+        body: m.body,
+        created_at: m.created_at,
+        sender_id: m.sender_id,
+        sender_name: sender?.name || "Unknown",
+        sender_role: sender?.role || null,
+      };
+    })
+  );
+  res.json(messages);
+});
+
+// POST /api/deliveries/:id/messages   { body }
+// Admin can read (oversight, same as everywhere else) but not post — chat
+// is an operational tool between the people actually coordinating a
+// delivery, and admin's role throughout this app is deliberately
+// oversight-only, not a participant in day-to-day operations.
+router.post("/:id/messages", async (req, res) => {
+  const delivery = await getDeliveryById(req.params.id);
+  if (!delivery) return res.status(404).json({ error: "Delivery not found." });
+  // Not involved in this delivery at all — same "don't confirm it exists"
+  // treatment as every other delivery-scoped route.
+  if (!canViewDelivery(req.user, delivery)) return res.status(404).json({ error: "Delivery not found." });
+  // Involved (can see it, e.g. admin oversight) but not allowed to post —
+  // a real permission failure, not a visibility one, so 403 is honest here.
+  if (req.user.role === "admin") return res.status(403).json({ error: "Admin has read-only oversight of chat, not posting." });
+
+  const { body } = req.body || {};
+  if (!body || !body.trim()) return res.status(400).json({ error: "body is required." });
+  if (body.trim().length > 2000) return res.status(400).json({ error: "Message is too long (max 2000 characters)." });
+
+  const message = await createMessage({ delivery_id: delivery.id, sender_id: req.user.id, body: body.trim() });
+  res.status(201).json({
+    id: message.id,
+    body: message.body,
+    created_at: message.created_at,
+    sender_id: req.user.id,
+    sender_name: req.user.name,
+    sender_role: req.user.role,
+  });
 });
 
 // A dispatcher coordinates every delivery, so sees all of them; so does an
