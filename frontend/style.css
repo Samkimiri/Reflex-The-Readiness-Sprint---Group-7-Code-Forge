@@ -150,24 +150,91 @@ body {
 }
 .status-dot.status-dot-bad { background: var(--cherry); }
 
-.login-hero-features {
-  list-style: none;
-  margin: 0;
-  padding: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
+/* ---------- Login hero slideshow ---------- */
+/* One "slide" per role, auto-advancing (see initHeroSlideshow() in
+   app.js) — cross-faded via opacity rather than a slide/translate
+   transition, which keeps it calm rather than flashy (per the
+   ui-ux-pro-max skill's own animation guidance: "animate 1-2 elements
+   max", nothing here needs to feel like a marketing carousel). A fixed
+   min-height on the container (not per-slide) means the three captions,
+   which differ in length, never cause a layout jump when the active
+   slide changes. */
+.hero-slideshow {
+  position: relative;
+  min-height: 210px;
+  margin-top: 4px;
 }
 
-.login-hero-features li {
-  display: flex;
+.hero-slide {
+  position: absolute;
+  inset: 0;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 0.6s ease;
+  text-align: center;
+  pointer-events: none;
+}
+.hero-slide.is-active {
+  position: relative;
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.hero-slide-icon {
+  display: inline-flex;
   align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: #e6f4f3;
+  justify-content: center;
+  width: 84px;
+  height: 84px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.08);
+  border: 1.5px solid rgba(255, 255, 255, 0.3);
+  font-size: 38px;
+  margin-bottom: 14px;
 }
 
-.hero-icon { font-size: 16px; }
+.hero-slide-role {
+  font-weight: 800;
+  font-size: 16px;
+  letter-spacing: 0.5px;
+  color: white;
+  margin-bottom: 6px;
+}
+
+.hero-slide-caption {
+  font-size: 13px;
+  color: #cfe8e6;
+  line-height: 1.5;
+  margin: 0;
+  max-width: 230px;
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.hero-slide-dots {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  display: flex;
+  justify-content: center;
+  gap: 8px;
+}
+
+.hero-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: none;
+  background: rgba(255, 255, 255, 0.3);
+  cursor: pointer;
+  padding: 0;
+  transition: background 0.2s ease, transform 0.2s ease;
+}
+.hero-dot.is-active { background: var(--mint); transform: scale(1.3); }
+.hero-dot:hover { background: rgba(255, 255, 255, 0.6); }
+.hero-dot:focus-visible { outline: 2px solid white; outline-offset: 2px; }
 
 .login-card {
   background: var(--white);

@@ -30,12 +30,28 @@
       <span class="status-dot" id="hero-status-dot"></span>
       <span id="hero-status-text">Checking system status…</span>
     </div>
-    <ul class="login-hero-features">
-      <li><span class="hero-icon">📦</span> Log a delivery request in seconds</li>
-      <li><span class="hero-icon">🛵</span> Dispatch assigns it to a rider instantly</li>
-      <li><span class="hero-icon">✅</span> QR-verified drop-off — proof, not just a claim</li>
-      <li><span class="hero-icon">📲</span> Install it as an app, works offline too</li>
-    </ul>
+    <div class="hero-slideshow" id="hero-slideshow">
+      <div class="hero-slide is-active" data-role="retailer">
+        <div class="hero-slide-icon">🏪</div>
+        <div class="hero-slide-role">Retailer</div>
+        <p class="hero-slide-caption">Logs what's going out, to whom, and where — takes seconds, no paperwork.</p>
+      </div>
+      <div class="hero-slide" data-role="dispatcher">
+        <div class="hero-slide-icon">🧭</div>
+        <div class="hero-slide-role">Dispatcher</div>
+        <p class="hero-slide-caption">Sees every open request and hands it to whichever rider is free.</p>
+      </div>
+      <div class="hero-slide" data-role="rider">
+        <div class="hero-slide-icon">🛵</div>
+        <div class="hero-slide-role">Rider</div>
+        <p class="hero-slide-caption">Confirms drop-off with a QR scan — proof, not just a claim.</p>
+      </div>
+      <div class="hero-slide-dots" role="tablist" aria-label="Role slides">
+        <button type="button" class="hero-dot is-active" data-slide-index="0" aria-label="Show retailer slide" aria-selected="true"></button>
+        <button type="button" class="hero-dot" data-slide-index="1" aria-label="Show dispatcher slide" aria-selected="false"></button>
+        <button type="button" class="hero-dot" data-slide-index="2" aria-label="Show rider slide" aria-selected="false"></button>
+      </div>
+    </div>
   </div>
   <div class="login-card">
     <h1 class="login-card-brand">REFLEX</h1>

@@ -270,6 +270,18 @@ opening a different modal on top of it).
   in the corner so it never sits under real content) — per the
   `ui-ux-pro-max` skill's own "animate 1-2 elements max" and "honor
   prefers-reduced-motion" guidance, both already followed here
+- A 3-slide auto-advancing role showcase in the login hero panel
+  (`#hero-slideshow`, `initHeroSlideshow()` in app.js) — retailer,
+  dispatcher, and rider each get a slide (icon badge + role name +
+  one-line caption), cross-fading every 3s. Standard carousel etiquette,
+  not just extra code: pauses on hover/focus and while the tab isn't
+  visible (a slide changing under someone's cursor, or silently still
+  ticking in a background tab, is exactly what those pauses prevent),
+  and honors `prefers-reduced-motion` by never starting the auto-advance
+  timer at all — the dots below the slides still work as manual
+  navigation either way. A fixed-height container (not per-slide) means
+  the three captions, which differ in length, never cause a layout jump
+  when the active slide changes
 - All four role dashboards (Retailer, Dispatcher, Rider, admin oversight),
   including a retailer product catalog (with photos) wired into delivery
   creation

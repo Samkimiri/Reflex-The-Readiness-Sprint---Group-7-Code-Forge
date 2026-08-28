@@ -304,6 +304,56 @@ function toast(msg, isError = false) {
   }
 })();
 
+// Auto-advancing role slideshow (retailer/dispatcher/rider) in the login
+// hero panel. Pauses on hover/focus and while the tab isn't visible —
+// standard carousel etiquette, not just extra code: a slide changing
+// under someone's cursor while they're trying to read it, or silently
+// still ticking in a background tab, is exactly what those pause rules
+// exist to prevent. Also honors prefers-reduced-motion by never starting
+// the auto-advance timer at all (first slide stays put; the dots below
+// still work as manual navigation either way).
+(function initHeroSlideshow() {
+  const root = document.getElementById("hero-slideshow");
+  if (!root) return;
+  const slides = Array.from(root.querySelectorAll(".hero-slide"));
+  const dots = Array.from(root.querySelectorAll(".hero-dot"));
+  if (!slides.length) return;
+
+  let index = 0;
+  let timer = null;
+  const reducedMotion = window.matchMedia("(prefers-reduced-motion: reduce)");
+
+  function show(i) {
+    index = (i + slides.length) % slides.length;
+    slides.forEach((s, n) => s.classList.toggle("is-active", n === index));
+    dots.forEach((d, n) => {
+      d.classList.toggle("is-active", n === index);
+      d.setAttribute("aria-selected", n === index ? "true" : "false");
+    });
+  }
+
+  function start() {
+    stop();
+    if (reducedMotion.matches || document.hidden) return;
+    timer = setInterval(() => show(index + 1), 3000);
+  }
+  function stop() {
+    clearInterval(timer);
+    timer = null;
+  }
+
+  dots.forEach((d, n) => d.addEventListener("click", () => { show(n); start(); }));
+  root.addEventListener("mouseenter", stop);
+  root.addEventListener("mouseleave", start);
+  root.addEventListener("focusin", stop);
+  root.addEventListener("focusout", start);
+  document.addEventListener("visibilitychange", () => (document.hidden ? stop() : start()));
+  reducedMotion.addEventListener("change", start);
+
+  show(0);
+  start();
+})();
+
 const EMAIL_CHECK_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function wireEmailCheck(inputId, checkId) {
