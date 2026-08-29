@@ -29,15 +29,19 @@ function motionAvailable() {
 }
 
 // A staggered "settling into place" entrance for a freshly-rendered card
-// list. Every render here fully replaces the list's innerHTML (see
-// setViewHTML below) rather than diffing — there's no persistent element
-// identity to do a real FLIP/layout animation between renders — so this
-// re-triggers on every render instead: reads as "here's your list" on
-// first load, and "here's what changed" right after the retailer's own
-// action (log/cancel a delivery) re-renders it.
-function animateCardsIn(container) {
+// list — delivery cards by default, or any other card selector (the
+// retailer's product grid uses .product-card). Every render here fully
+// replaces the list's innerHTML (see setViewHTML below) rather than
+// diffing — there's no persistent element identity to do a real
+// FLIP/layout animation between renders — so this re-triggers on every
+// render instead: reads as "here's your list" on first load, and "here's
+// what changed" right after the retailer's own action (log a delivery,
+// add a product) re-renders it. Dispatcher/rider, which poll continuously
+// rather than only re-rendering on a discrete action, only call this on
+// their very first render — see the isFirst checks at each call site.
+function animateCardsIn(container, selector = ".delivery-card") {
   if (!motionAvailable() || !container) return;
-  const cards = container.querySelectorAll(".delivery-card");
+  const cards = container.querySelectorAll(selector);
   if (!cards.length) return;
   window.Motion.animate(
     cards,
@@ -356,7 +360,22 @@ function toast(msg, isError = false) {
   el.classList.toggle("error", isError);
   el.classList.remove("hidden");
   clearTimeout(toast._t);
-  toast._t = setTimeout(() => el.classList.add("hidden"), 3200);
+  clearTimeout(toast._hideT); // a fast second toast shouldn't get hidden by a fade-out timer left over from the first
+
+  if (motionAvailable()) {
+    // Previously an instant class toggle, no animation at all. A matched
+    // setTimeout (not the animation's own completion promise) removes
+    // .hidden after the fade-out visually finishes — simpler and can't
+    // leave a toast stuck on screen if this Motion version's returned
+    // animation object doesn't behave exactly as expected.
+    window.Motion.animate(el, { opacity: [0, 1], y: [16, 0] }, { type: "spring", stiffness: 420, damping: 30 });
+    toast._t = setTimeout(() => {
+      window.Motion.animate(el, { opacity: [1, 0], y: [0, 10] }, { duration: 0.25, easing: "ease-in" });
+      toast._hideT = setTimeout(() => el.classList.add("hidden"), 260);
+    }, 3200);
+  } else {
+    toast._t = setTimeout(() => el.classList.add("hidden"), 3200);
+  }
 }
 
 // ---------- Landing page interactivity ----------
@@ -1033,18 +1052,40 @@ function filterDeliveries(items, filters) {
 // yet) or when `silent` is set (used right after the viewer's own
 // action, which already shows its own confirmation toast — diffing
 // there would just repeat it).
+// Returns the ids of deliveries whose status actually changed since the
+// last snapshot (not ones that just arrived) — the caller uses this,
+// after re-rendering, to pop just those specific status pills (see
+// popStatusPills below) so the toast text has a visual anchor on the
+// list, not just the notification.
 function diffAndToastChanges(role, items, { silent = false } = {}) {
   const prev = state.snapshots[role];
+  const changedIds = [];
   if (prev && !silent) {
     for (const d of items) {
       if (!prev.has(d.id)) {
         toast(`New delivery: ${d.customer_name}`);
       } else if (prev.get(d.id) !== d.status) {
         toast(`${d.customer_name} → ${statusLabel(d.status)}`);
+        changedIds.push(d.id);
       }
     }
   }
   state.snapshots[role] = new Map(items.map((d) => [d.id, d.status]));
+  return changedIds;
+}
+
+// Small scale-pop on a delivery's status pill — called right after
+// re-rendering, so it works fine even though the pill is technically a
+// freshly-created DOM node each time (see setViewHTML): this isn't a
+// FLIP-style reposition animation that needs persistent element identity,
+// just "this specific element pops right after it appears," which a new
+// node does exactly as well as an old one would.
+function popStatusPills(deliveryIds) {
+  if (!motionAvailable() || !deliveryIds.length) return;
+  for (const id of deliveryIds) {
+    const pill = document.querySelector(`.delivery-card[data-delivery-id="${id}"] .status-pill`);
+    if (pill) window.Motion.animate(pill, { scale: [1, 1.22, 1] }, { duration: 0.45, easing: [0.34, 1.56, 0.64, 1] });
+  }
 }
 
 // ================= RETAILER =================
@@ -1122,7 +1163,7 @@ async function renderRetailer(root) {
           <div class="full"><button class="btn btn-primary" type="submit">Add product</button></div>
         </form>
       </details>
-      <div class="product-grid">
+      <div class="product-grid" id="retailer-product-grid">
         ${products.length ? products.map(productCard).join("") : `<div class="empty-state">No products yet — add what you sell above.</div>`}
       </div>
     </div>
@@ -1136,6 +1177,7 @@ async function renderRetailer(root) {
     </div>
   `);
   animateCardsIn(document.getElementById("retailer-delivery-list"));
+  animateCardsIn(document.getElementById("retailer-product-grid"), ".product-card");
 
   let pendingProductImage = null;
   const imageInput = document.getElementById("product-image-input");
@@ -1381,7 +1423,15 @@ async function renderDispatcher(root, opts = {}) {
   ]);
   const inFlight = await api("/deliveries").then((all) => all.filter((d) => ["assigned", "picked_up"].includes(d.status))).catch(() => []);
 
-  diffAndToastChanges("dispatcher", [...open, ...inFlight], opts);
+  // Only the very first render for this role (nothing to diff against
+  // yet — same condition diffAndToastChanges itself uses to decide
+  // whether to toast) gets the full staggered list entrance. Re-playing
+  // that on every 5s poll tick regardless of whether anything changed
+  // would read as flickery, not polished — the ongoing "something
+  // changed" signal on a poll tick is popStatusPills below instead,
+  // scoped to just the pill(s) that actually did.
+  const isFirstDispatcherRender = !state.snapshots.dispatcher;
+  const changedDeliveryIds = diffAndToastChanges("dispatcher", [...open, ...inFlight], opts);
 
   const filters = state.filters.dispatcher;
   const searchHadFocus = document.activeElement && document.activeElement.id === "dispatcher-search";
@@ -1458,6 +1508,11 @@ async function renderDispatcher(root, opts = {}) {
   }
 
   renderLists();
+  if (isFirstDispatcherRender) {
+    animateCardsIn(document.getElementById("dispatcher-open-list"));
+    animateCardsIn(document.getElementById("dispatcher-inflight-list"));
+  }
+  popStatusPills(changedDeliveryIds);
 
   const searchInput = document.getElementById("dispatcher-search");
   const statusSelect = document.getElementById("dispatcher-status-filter");
@@ -1478,7 +1533,7 @@ async function renderDispatcher(root, opts = {}) {
 
 function dispatcherCard(d, riders) {
   return `
-    <div class="delivery-card">
+    <div class="delivery-card" data-delivery-id="${d.id}">
       <div class="delivery-main">
         <div class="delivery-title">${escapeHtml(d.customer_name)} <span class="status-pill status-${d.status}">${statusLabel(d.status)}</span></div>
         <div class="delivery-sub">${escapeHtml(d.item_description)} — ${escapeHtml(d.address)}</div>
@@ -1498,7 +1553,7 @@ function dispatcherCard(d, riders) {
 
 function inFlightCard(d) {
   return `
-    <div class="delivery-card">
+    <div class="delivery-card" data-delivery-id="${d.id}">
       <div class="delivery-main">
         <div class="delivery-title">${escapeHtml(d.customer_name)} <span class="status-pill status-${d.status}">${statusLabel(d.status)}</span></div>
         <div class="delivery-sub">${escapeHtml(d.address)}</div>
@@ -1515,7 +1570,10 @@ function inFlightCard(d) {
 async function renderRider(root, opts = {}) {
   const mine = await api("/deliveries?rider_id=me").then((all) => all.filter((d) => ["assigned", "picked_up"].includes(d.status))).catch(() => []);
 
-  diffAndToastChanges("rider", mine, opts);
+  // Same reasoning as renderDispatcher: full list entrance only on the
+  // very first render, ongoing per-item change signal via popStatusPills.
+  const isFirstRiderRender = !state.snapshots.rider;
+  const changedDeliveryIds = diffAndToastChanges("rider", mine, opts);
 
   const filters = state.filters.rider;
   const searchHadFocus = document.activeElement && document.activeElement.id === "rider-search";
@@ -1567,6 +1625,8 @@ async function renderRider(root, opts = {}) {
   }
 
   renderList();
+  if (isFirstRiderRender) animateCardsIn(document.getElementById("rider-list"));
+  popStatusPills(changedDeliveryIds);
 
   const searchInput = document.getElementById("rider-search");
   const statusSelect = document.getElementById("rider-status-filter");
@@ -1587,7 +1647,7 @@ async function renderRider(root, opts = {}) {
 
 function riderCard(d) {
   return `
-    <div class="delivery-card">
+    <div class="delivery-card" data-delivery-id="${d.id}">
       <div class="delivery-main">
         <div class="delivery-title">${escapeHtml(d.customer_name)} <span class="status-pill status-${d.status}">${statusLabel(d.status)}</span></div>
         <div class="delivery-sub">${escapeHtml(d.item_description)} — ${escapeHtml(d.address)}</div>
@@ -1756,6 +1816,23 @@ function openModal(html) {
   backdrop.innerHTML = `<div class="modal">${html}</div>`;
   backdrop.addEventListener("click", (e) => { if (e.target === backdrop) closeModal(backdrop); });
   document.body.appendChild(backdrop);
+
+  // openModal() is the one function every modal in this app goes through
+  // (chat, profile, QR, product edit, the guide walkthrough, Google's
+  // role picker), so upgrading the entrance here upgrades all of them at
+  // once. .modal already has a plain CSS keyframe entrance (modalIn) for
+  // anyone without Motion loaded — cancelled here, before first paint, so
+  // it doesn't play underneath/compound with the spring below.
+  if (motionAvailable()) {
+    const modalEl = backdrop.querySelector(".modal");
+    modalEl.style.animation = "none";
+    window.Motion.animate(
+      modalEl,
+      { opacity: [0, 1], y: [16, 0], scale: [0.96, 1] },
+      { type: "spring", stiffness: 380, damping: 28 }
+    );
+  }
+
   return backdrop;
 }
 function closeModal(backdrop) {
