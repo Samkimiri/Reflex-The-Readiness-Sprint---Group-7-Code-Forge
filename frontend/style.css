@@ -72,6 +72,8 @@ body {
 }
 
 #login-screen {
+  position: relative;
+  overflow: hidden;
   min-height: 100vh;
   min-height: 100dvh;
   display: flex;
@@ -84,7 +86,34 @@ body {
   padding: max(20px, env(safe-area-inset-top)) 16px max(20px, env(safe-area-inset-bottom));
 }
 
+/* Full-bleed photo carousel behind the whole login screen — one photo per
+   role (retailer/dispatcher/rider), cross-fading in lockstep with the
+   hero-slideshow's role captions (same index, same 3s timer — driven from
+   initHeroSlideshow() in app.js so there's only one timer to keep in sync,
+   not two). Each photo already carries its own dark-teal gradient wash
+   (baked into the inline background-image list) so text stays legible
+   over it without a separate scrim layer. On wide viewports .login-hero's
+   existing frosted-glass panel sits on top and blurs it further; on
+   narrow viewports (.login-hero hidden) it's just a photo behind the
+   login card. */
+.hero-bg-carousel {
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+}
+.hero-bg-photo {
+  position: absolute;
+  inset: 0;
+  background-size: cover;
+  background-position: center;
+  opacity: 0;
+  transition: opacity 1.5s ease;
+}
+.hero-bg-photo.is-active { opacity: 1; }
+
 .login-layout {
+  position: relative;
+  z-index: 1;
   display: flex;
   align-items: stretch;
   gap: 0;

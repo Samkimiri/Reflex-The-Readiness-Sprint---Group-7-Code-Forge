@@ -337,7 +337,15 @@ probe which tokens are real.
   timer at all — the dots below the slides still work as manual
   navigation either way. A fixed-height container (not per-slide) means
   the three captions, which differ in length, never cause a layout jump
-  when the active slide changes
+  when the active slide changes. A full-bleed photo carousel sits behind
+  the entire login screen (`.hero-bg-carousel`, `frontend/hero-photos/`),
+  one photo per role, cross-fading in lockstep with the slide above it —
+  same `index`/timer, so there's exactly one 3s clock driving both rather
+  than two to keep in sync. Each photo has a dark-teal gradient wash baked
+  into its own `background-image` so text stays legible over it without a
+  separate scrim element; on wide viewports the existing frosted-glass
+  hero panel sits on top and blurs it further, on narrow viewports (where
+  that panel is hidden) it's just a tinted photo behind the login card
 - All four role dashboards (Retailer, Dispatcher, Rider, admin oversight),
   including a retailer product catalog (with photos) wired into delivery
   creation

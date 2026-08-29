@@ -317,6 +317,7 @@ function toast(msg, isError = false) {
   if (!root) return;
   const slides = Array.from(root.querySelectorAll(".hero-slide"));
   const dots = Array.from(root.querySelectorAll(".hero-dot"));
+  const bgPhotos = Array.from(document.querySelectorAll(".hero-bg-photo"));
   if (!slides.length) return;
 
   let index = 0;
@@ -325,11 +326,13 @@ function toast(msg, isError = false) {
 
   function show(i) {
     index = (i + slides.length) % slides.length;
+    const role = slides[index].dataset.role;
     slides.forEach((s, n) => s.classList.toggle("is-active", n === index));
     dots.forEach((d, n) => {
       d.classList.toggle("is-active", n === index);
       d.setAttribute("aria-selected", n === index ? "true" : "false");
     });
+    bgPhotos.forEach((p) => p.classList.toggle("is-active", p.dataset.role === role));
   }
 
   function start() {
