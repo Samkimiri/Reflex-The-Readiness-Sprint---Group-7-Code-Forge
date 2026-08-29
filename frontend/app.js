@@ -18,6 +18,7 @@ let state = {
 
 // ---------- API helper ----------
 async function api(path, { method = "GET", body } = {}) {
+  const hadToken = !!state.token; // a 401 only means "your session expired" if a token was actually sent — /auth/login rejecting a wrong password is a normal 401 with no token at all
   const res = await fetch(API + path, {
     method,
     headers: {
@@ -27,8 +28,50 @@ async function api(path, { method = "GET", body } = {}) {
     body: body ? JSON.stringify(body) : undefined,
   });
   const data = await res.json().catch(() => ({}));
+  if (res.status === 401 && hadToken) {
+    // Every polling call site (dispatcher/rider auto-refresh, etc.) does
+    // its own `.catch(() => [])`, which used to mean an expired/invalid
+    // token just silently emptied the dashboard forever, polling every 5s
+    // with no visible explanation — see the trade-off log. Handling it
+    // once here, centrally, means every call site gets this for free
+    // without needing its own 401-awareness.
+    forceLogout("Your session has expired — please log in again.");
+  }
   if (!res.ok) throw new Error(data.error || "Request failed");
   return data;
+}
+
+// Shared by the "Log out" button and by api()'s own 401 handling above —
+// the actual state-clearing/screen-switching is identical either way, the
+// only difference is whether there's a message to explain why it happened.
+// Guarded against firing more than once per expiry: a poll tick commonly
+// fires several api() calls at once (Promise.all), and a stale token
+// fails all of them near-simultaneously — without this, that's several
+// stacked/flickering toasts and redundant screen swaps for one event.
+let loggingOut = false;
+function forceLogout(message) {
+  if (loggingOut) return;
+  loggingOut = true;
+  clearInterval(state.pollTimer);
+  // Reset to the exact same shape `state` started life as (see the top of
+  // this file) — not just {token, user, pollTimer}. A render already
+  // in-flight when this fires (forceLogout can now happen mid-poll, from
+  // inside a render's own Promise.all of api() calls) reads
+  // state.filters.dispatcher/rider right after — dropping those entirely
+  // crashed on exactly that read.
+  state = {
+    token: null,
+    user: null,
+    pollTimer: null,
+    filters: { dispatcher: { search: "", status: "" }, rider: { search: "", status: "" } },
+    snapshots: { dispatcher: null, rider: null },
+  };
+  localStorage.removeItem("reflex_token");
+  localStorage.removeItem("reflex_user");
+  document.getElementById("app-screen")?.classList.add("hidden");
+  document.getElementById("login-screen")?.classList.remove("hidden");
+  if (message) toast(message, true);
+  setTimeout(() => (loggingOut = false), 500); // done switching screens; a later, unrelated expiry can trigger this again
 }
 
 // ---------- Offline queue (IndexedDB) ----------
@@ -686,14 +729,7 @@ function openGoogleRolePicker() {
   });
 }
 
-on("logout-btn", "click", () => {
-  clearInterval(state.pollTimer);
-  state = { token: null, user: null, pollTimer: null };
-  localStorage.removeItem("reflex_token");
-  localStorage.removeItem("reflex_user");
-  document.getElementById("app-screen")?.classList.add("hidden");
-  document.getElementById("login-screen")?.classList.remove("hidden");
-});
+on("logout-btn", "click", () => forceLogout());
 
 on("profile-link", "click", () => openProfileModal());
 
