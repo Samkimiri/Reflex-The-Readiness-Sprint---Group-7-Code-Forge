@@ -805,6 +805,47 @@ h2 { font-size: 20px; margin: 0 0 4px; }
 .status-delivered { background: #d7f5e9; color: #036b45; }
 .status-cancelled { background: #f6d9dc; color: var(--cherry); }
 
+/* Retailer delivery list — a status-colored left edge (via :has(), so no
+   extra markup needed) turns the list into something scannable by color
+   at a glance instead of requiring reading every pill; a resting shadow
+   gives the cards actual depth instead of only appearing "raised" on
+   hover; and a cancelled delivery — done, unactionable — recedes instead
+   of competing visually with the deliveries still in motion. Scoped to
+   .retailer-view like the mobile touch-target rules above, so
+   dispatcher/rider/admin (same .delivery-card markup) are unaffected. */
+.retailer-view .delivery-card {
+  box-shadow: 0 1px 3px rgba(0,0,0,0.05);
+  border-left: 4px solid var(--border);
+}
+.retailer-view .delivery-card:has(.status-requested) { border-left-color: #7fa8ae; }
+.retailer-view .delivery-card:has(.status-assigned) { border-left-color: #6f8fe0; }
+.retailer-view .delivery-card:has(.status-picked_up) { border-left-color: #e0a941; }
+.retailer-view .delivery-card:has(.status-delivered) { border-left-color: var(--mint); }
+.retailer-view .delivery-card:has(.status-cancelled) {
+  border-left-color: var(--cherry);
+  opacity: 0.6;
+}
+.retailer-view .delivery-card:has(.status-cancelled):hover { opacity: 0.9; }
+
+.retailer-view .delivery-title { font-size: 15px; }
+.retailer-view .status-pill::before { margin-right: 4px; }
+.retailer-view .status-requested::before { content: "🕐"; }
+.retailer-view .status-assigned::before { content: "🧭"; }
+.retailer-view .status-picked_up::before { content: "📦"; }
+.retailer-view .status-delivered::before { content: "✅"; }
+.retailer-view .status-cancelled::before { content: "✕"; }
+
+/* Show QR is the one action that matters most on an in-flight delivery
+   (it's what actually hands off to the rider) — a teal tint pulls it
+   forward from History/Chat, which are secondary/reference actions. */
+.retailer-view .delivery-actions .btn-secondary[data-qr] {
+  background: rgba(2,128,144,0.08);
+  border-color: rgba(2,128,144,0.35);
+  color: var(--teal-dark);
+  font-weight: 700;
+}
+.retailer-view .delivery-actions .btn-secondary[data-qr]:hover { border-color: var(--teal); background: rgba(2,128,144,0.14); }
+
 .empty-state { color: var(--muted); font-size: 13px; padding: 20px 0; text-align: center; }
 
 /* ---------- Admin overview ---------- */
