@@ -357,6 +357,24 @@ probe which tokens are real.
   nothing to actually move. On wide viewports the existing frosted-glass
   hero panel sits on top and blurs it further; on narrow viewports (where
   that panel is hidden) it's just a tinted photo behind the login card
+- **Motion** (motion.dev — a small, framework-agnostic animation library
+  from the Framer Motion team, loaded via CDN in `index.html`, no React or
+  build step needed) drives two specific animations on top of behavior
+  that already worked without it: the hero carousel's photo crossfade
+  above (a real two-sided fade with a barely-there scale-in, replacing
+  the plain CSS opacity transition) and a staggered fade/slide entrance
+  for the retailer's delivery cards every time that list renders — first
+  load, and again right after the retailer's own action (log/cancel a
+  delivery) re-renders it, since the whole list is replaced via
+  `innerHTML` on every render rather than diffed, so there's no
+  persistent element identity for a true FLIP-style reorder animation
+  between renders; the entrance re-triggering each time is the honest fit
+  for that architecture, not a limitation being worked around. Everything
+  built on it checks `window.Motion` and `prefers-reduced-motion` first
+  (`motionAvailable()` in app.js) — if the CDN script doesn't load
+  (offline, blocked) or reduced motion is preferred, it silently no-ops
+  and the plain CSS-driven behavior underneath (still there, unchanged)
+  is exactly what's left
 - All four role dashboards (Retailer, Dispatcher, Rider, admin oversight),
   including a retailer product catalog (with photos) wired into delivery
   creation

@@ -16,6 +16,36 @@ let state = {
   snapshots: { dispatcher: null, rider: null },
 };
 
+// ---------- Motion (motion.dev) helpers ----------
+// Small shared checks so every animation built on Motion (see below and
+// initHeroSlideshow) degrades the same, deliberate way: no CDN script
+// loaded, or the visitor prefers reduced motion, and these just no-op —
+// the app is never depending on a third-party script actually loading.
+function prefersReducedMotion() {
+  return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+}
+function motionAvailable() {
+  return !!window.Motion && !prefersReducedMotion();
+}
+
+// A staggered "settling into place" entrance for a freshly-rendered card
+// list. Every render here fully replaces the list's innerHTML (see
+// setViewHTML below) rather than diffing — there's no persistent element
+// identity to do a real FLIP/layout animation between renders — so this
+// re-triggers on every render instead: reads as "here's your list" on
+// first load, and "here's what changed" right after the retailer's own
+// action (log/cancel a delivery) re-renders it.
+function animateCardsIn(container) {
+  if (!motionAvailable() || !container) return;
+  const cards = container.querySelectorAll(".delivery-card");
+  if (!cards.length) return;
+  window.Motion.animate(
+    cards,
+    { opacity: [0, 1], y: [16, 0] },
+    { duration: 0.35, delay: window.Motion.stagger(0.045), easing: [0.22, 1, 0.36, 1] }
+  );
+}
+
 // ---------- API helper ----------
 async function api(path, { method = "GET", body } = {}) {
   const hadToken = !!state.token; // a 401 only means "your session expired" if a token was actually sent — /auth/login rejecting a wrong password is a normal 401 with no token at all
@@ -370,12 +400,35 @@ function toast(msg, isError = false) {
   function show(i) {
     index = (i + slides.length) % slides.length;
     const role = slides[index].dataset.role;
+
     slides.forEach((s, n) => s.classList.toggle("is-active", n === index));
     dots.forEach((d, n) => {
       d.classList.toggle("is-active", n === index);
       d.setAttribute("aria-selected", n === index ? "true" : "false");
     });
+
+    const outPhoto = bgPhotos.find((p) => p.classList.contains("is-active"));
+    const inPhoto = bgPhotos.find((p) => p.dataset.role === role);
     bgPhotos.forEach((p) => p.classList.toggle("is-active", p.dataset.role === role));
+
+    if (motionAvailable()) {
+      // The incoming caption gets a real spring-eased slide+fade instead
+      // of the plain CSS opacity fade it'd otherwise get from the
+      // .is-active class alone — a small but genuinely nicer entrance.
+      window.Motion.animate(slides[index], { opacity: [0, 1], y: [10, 0] }, { duration: 0.6, easing: [0.22, 1, 0.36, 1] });
+
+      // The background photo has no visibility/position quirks to work
+      // around (unlike .hero-slide — see its CSS), so it's the one
+      // element here that gets a genuine two-sided crossfade: both the
+      // outgoing and incoming photo actually animating at once, with a
+      // slow, barely-there scale-down on the incoming one so it reads as
+      // settling into place rather than a flat cut. This animation takes
+      // over from — and, per the standard CSS cascade, wins over — the
+      // opacity transition still declared in .hero-bg-photo's CSS; that
+      // CSS is what's left running for anyone without Motion loaded.
+      if (inPhoto) window.Motion.animate(inPhoto, { opacity: [0, 1], scale: [1.045, 1] }, { duration: 2, easing: [0.22, 1, 0.36, 1] });
+      if (outPhoto && outPhoto !== inPhoto) window.Motion.animate(outPhoto, { opacity: [1, 0] }, { duration: 1.6, easing: "ease-in-out" });
+    }
   }
 
   function start() {
@@ -1076,12 +1129,13 @@ async function renderRetailer(root) {
 
     <div class="panel">
       <h3>Your deliveries (${deliveries.length})</h3>
-      <div class="delivery-list">
+      <div class="delivery-list" id="retailer-delivery-list">
         ${deliveries.length ? deliveries.map(retailerCard).join("") : `<div class="empty-state">No deliveries logged yet.</div>`}
       </div>
     </div>
     </div>
   `);
+  animateCardsIn(document.getElementById("retailer-delivery-list"));
 
   let pendingProductImage = null;
   const imageInput = document.getElementById("product-image-input");
