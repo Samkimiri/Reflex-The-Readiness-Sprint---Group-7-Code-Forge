@@ -338,7 +338,7 @@ function toast(msg, isError = false) {
   function start() {
     stop();
     if (reducedMotion.matches || document.hidden) return;
-    timer = setInterval(() => show(index + 1), 3000);
+    timer = setInterval(() => show(index + 1), 10000);
   }
   function stop() {
     clearInterval(timer);

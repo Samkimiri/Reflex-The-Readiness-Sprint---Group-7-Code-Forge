@@ -329,7 +329,7 @@ probe which tokens are real.
 - A 3-slide auto-advancing role showcase in the login hero panel
   (`#hero-slideshow`, `initHeroSlideshow()` in app.js) — retailer,
   dispatcher, and rider each get a slide (icon badge + role name +
-  one-line caption), cross-fading every 3s. Standard carousel etiquette,
+  one-line caption), cross-fading every 10s. Standard carousel etiquette,
   not just extra code: pauses on hover/focus and while the tab isn't
   visible (a slide changing under someone's cursor, or silently still
   ticking in a background tab, is exactly what those pauses prevent),
@@ -340,11 +340,19 @@ probe which tokens are real.
   when the active slide changes. A full-bleed photo carousel sits behind
   the entire login screen (`.hero-bg-carousel`, `frontend/hero-photos/`),
   one photo per role, cross-fading in lockstep with the slide above it —
-  same `index`/timer, so there's exactly one 3s clock driving both rather
-  than two to keep in sync. Each photo has a dark-teal gradient wash baked
-  into its own `background-image` so text stays legible over it without a
-  separate scrim element; on wide viewports the existing frosted-glass
-  hero panel sits on top and blurs it further, on narrow viewports (where
+  same `index`/timer, so there's exactly one 10s clock driving both rather
+  than two to keep in sync, with a slower, smoother 2.4s opacity fade
+  (`ease-in-out`) between photos to match the heavier visual. Each photo
+  has a light dark-teal gradient wash baked into its own `background-image`
+  so text stays legible over it without a separate scrim element, kept
+  subtle enough that the photos themselves stay clearly visible rather
+  than mostly obscured. The dispatcher and rider photos are sized larger
+  than a strict cover fit (`background-size: auto 118%` / `130%`) purely
+  to create vertical slack to position within — `cover` alone has zero
+  vertical room to pan on this layout (height is always the binding
+  dimension), so without the oversize, `background-position` would have
+  nothing to actually move. On wide viewports the existing frosted-glass
+  hero panel sits on top and blurs it further; on narrow viewports (where
   that panel is hidden) it's just a tinted photo behind the login card
 - All four role dashboards (Retailer, Dispatcher, Rider, admin oversight),
   including a retailer product catalog (with photos) wired into delivery
