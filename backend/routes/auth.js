@@ -2,7 +2,6 @@ const express = require("express");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
 const {
-  findUserByPhone,
   findUserByEmail,
   findUserByGoogleId,
   createUser,
@@ -40,13 +39,12 @@ router.post("/register", async (req, res) => {
   if (!ROLES.includes(role)) {
     return res.status(400).json({ error: `role must be one of: ${ROLES.join(", ")}` });
   }
-  if (await findUserByEmail(email)) {
-    return res.status(409).json({ error: "A user with that email already exists." });
-  }
-  if (await findUserByPhone(phone)) {
-    return res.status(409).json({ error: "A user with that phone number already exists." });
-  }
 
+  // No separate "does this email/phone already exist" pre-check here —
+  // createUser claims both atomically and throws a 409 itself on conflict,
+  // so two concurrent registrations for the same email/phone can't both
+  // succeed (a check-then-act pair here couldn't guarantee that: both
+  // requests could pass the check before either finished writing).
   const password_hash = bcrypt.hashSync(password, 10);
   const user = await createUser({ name, phone, email, password_hash, role });
   const token = signToken(user);

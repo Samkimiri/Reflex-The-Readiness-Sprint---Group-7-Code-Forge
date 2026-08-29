@@ -13,6 +13,11 @@ process.env.VERCEL = "1";
 // the same address, which is exactly what that limiter is designed to
 // catch in production; here it's just test volume.
 process.env.NODE_ENV = "test";
+// server.js refuses to start on VERCEL with no JWT_SECRET set (a real
+// deploy must have a real one — see the check there). Give the suite one
+// so it's actually exercising that same production-like startup path
+// rather than getting an exemption from it.
+process.env.JWT_SECRET = process.env.JWT_SECRET || "test-only-secret-do-not-use-in-production";
 const tmpDbFile = path.join(os.tmpdir(), "reflex-db.json");
 if (fs.existsSync(tmpDbFile)) fs.rmSync(tmpDbFile);
 
@@ -177,6 +182,100 @@ test("full delivery lifecycle enforces role checks at each step", async () => {
   });
   assert.equal(pickup.status, 200);
   assert.equal(pickup.data.status, "picked_up");
+});
+
+// Regression test for the concurrency fix in db.js (casDeliveryTransition):
+// two dispatchers racing to assign the same delivery used to be a plain
+// read-compare-write with only an optimistic re-check narrowing (not
+// closing) the window — both requests could read "requested" before either
+// wrote, and the second write would silently clobber the first's. Now it's
+// a real compare-and-swap, so exactly one of these two concurrent requests
+// must succeed and the other must get a clean 409, never two 200s and
+// never a 500/hang.
+test("two concurrent assign requests for the same delivery: exactly one succeeds", async () => {
+  const suffix = Date.now();
+  const retailer = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "R2", phone: `0731${suffix % 1000000}`, email: `r2-${suffix}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+  const dispatcher = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "D2", phone: `0732${suffix % 1000000}`, email: `d2-${suffix}@example.com`, password: "testpass1", role: "dispatcher" },
+    })
+  ).data;
+  const riderA = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "RiA", phone: `0733${suffix % 1000000}`, email: `ria-${suffix}@example.com`, password: "testpass1", role: "rider" },
+    })
+  ).data;
+  const riderB = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "RiB", phone: `0734${suffix % 1000000}`, email: `rib-${suffix}@example.com`, password: "testpass1", role: "rider" },
+    })
+  ).data;
+
+  const created = await api("/api/deliveries", {
+    method: "POST",
+    token: retailer.token,
+    body: { customer_name: "Cust2", customer_phone: "0700111333", address: "Nairobi", item_description: "Widget2" },
+  });
+  const deliveryId = created.data.id;
+
+  const [resA, resB] = await Promise.all([
+    api(`/api/deliveries/${deliveryId}/assign`, { method: "PATCH", token: dispatcher.token, body: { rider_id: riderA.user.id } }),
+    api(`/api/deliveries/${deliveryId}/assign`, { method: "PATCH", token: dispatcher.token, body: { rider_id: riderB.user.id } }),
+  ]);
+
+  // Exactly one must win (200). The loser's outcome depends on exactly
+  // where the race lands: if its own optimistic pre-read happens to run
+  // after the winner's write already landed, the route's early
+  // canTransition() check catches it first (400, "already assigned/not
+  // requested"); if the pre-read ran before that, it reaches the atomic
+  // compare-and-swap itself and loses there instead (409). Both are the
+  // same real thing — "you lost the race, and correctly so" — never a 500,
+  // and never two 200s.
+  const winCount = [resA.status, resB.status].filter((s) => s === 200).length;
+  assert.equal(winCount, 1, `expected exactly one winner, got statuses ${resA.status} and ${resB.status}`);
+  const loserStatus = resA.status === 200 ? resB.status : resA.status;
+  assert.ok([400, 409].includes(loserStatus), `expected the loser to get 400 or 409, got ${loserStatus}`);
+
+  const winner = resA.status === 200 ? resA : resB;
+  assert.equal(winner.data.status, "assigned");
+  assert.ok(winner.data.rider_id === riderA.user.id || winner.data.rider_id === riderB.user.id);
+
+  // The delivery's final state must match whichever request actually won
+  // — not a corrupted mix of both, and not silently reverted by the loser.
+  const final = await api(`/api/deliveries/${deliveryId}`, { token: dispatcher.token });
+  assert.equal(final.data.status, "assigned");
+  assert.equal(final.data.rider_id, winner.data.rider_id);
+});
+
+// Regression test for the register race fixed by making createUser's
+// email/phone claim atomic (SETNX-style) instead of a separate
+// findUserByEmail check followed by a later, unrelated write.
+test("two concurrent registrations with the same email: exactly one succeeds", async () => {
+  const suffix = Date.now();
+  const email = `race-${suffix}@example.com`;
+  const body = (phoneSuffix) => ({
+    name: "Racer",
+    phone: `0741${(suffix + phoneSuffix) % 1000000}`,
+    email,
+    password: "testpass1",
+    role: "retailer",
+  });
+
+  const [resA, resB] = await Promise.all([
+    api("/api/auth/register", { method: "POST", body: body(1) }),
+    api("/api/auth/register", { method: "POST", body: body(2) }),
+  ]);
+
+  const statuses = [resA.status, resB.status].sort();
+  assert.deepEqual(statuses, [201, 409], `expected one 201 and one 409, got ${resA.status} and ${resB.status}`);
 });
 
 test("a delivery is only visible/actionable to parties actually involved in it", async () => {

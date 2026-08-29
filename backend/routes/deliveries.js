@@ -5,7 +5,7 @@ const {
   createDelivery,
   getDeliveryById,
   listDeliveries,
-  saveDelivery,
+  casDeliveryTransition,
   addStatusLog,
   getStatusLog,
   findUserById,
@@ -92,20 +92,22 @@ router.patch("/:id/assign", async (req, res, next) => {
     const rider = await findUserById(rider_id);
     if (!rider || rider.role !== "rider") return res.status(400).json({ error: "rider_id must belong to a rider." });
 
-    // Atomic-in-spirit: re-check status hasn't moved before writing (single-process JSON store
-    // makes this effectively atomic; a real DB would use `UPDATE ... WHERE status='requested'`).
-    const fresh = await getDeliveryById(delivery.id);
-    if (fresh.status !== "requested") {
+    // Genuinely atomic (a Lua script server-side in Redis; a mutex locally)
+    // — see the concurrency-model comment at the top of db.js. Two
+    // dispatchers assigning the same delivery at the same instant can't
+    // both succeed: the loser gets this 409 instead of a write that
+    // silently got overwritten a moment later.
+    const updated = await casDeliveryTransition(delivery.id, "requested", (d) => ({
+      ...d,
+      status: "assigned",
+      rider_id: Number(rider_id),
+    }));
+    if (!updated) {
       return res.status(409).json({ error: "This delivery was already assigned by someone else." });
     }
+    await addStatusLog({ delivery_id: updated.id, changed_by: req.user.id, old_status: "requested", new_status: "assigned" });
 
-    const old_status = fresh.status;
-    fresh.status = "assigned";
-    fresh.rider_id = Number(rider_id);
-    await saveDelivery(fresh);
-    await addStatusLog({ delivery_id: fresh.id, changed_by: req.user.id, old_status, new_status: "assigned" });
-
-    res.json(withView(fresh, req.user));
+    res.json(withView(updated, req.user));
   } catch (e) {
     next(e);
   }
@@ -132,12 +134,13 @@ router.patch("/:id/status", async (req, res, next) => {
       throw httpError(400, `Cannot move from '${delivery.status}' to '${new_status}'.`);
     }
 
-    const old_status = delivery.status;
-    delivery.status = new_status;
-    await saveDelivery(delivery);
-    await addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status, new_status });
+    const updated = await casDeliveryTransition(delivery.id, delivery.status, (d) => ({ ...d, status: new_status }));
+    if (!updated) {
+      throw httpError(409, `This delivery's status changed before this update went through — reload and try again.`);
+    }
+    await addStatusLog({ delivery_id: updated.id, changed_by: req.user.id, old_status: delivery.status, new_status });
 
-    res.json(withView(delivery, req.user));
+    res.json(withView(updated, req.user));
   } catch (e) {
     next(e);
   }
@@ -160,12 +163,13 @@ router.post("/:id/scan", async (req, res, next) => {
       throw httpError(400, `Cannot confirm delivery — status is currently '${delivery.status}', expected 'picked_up'.`);
     }
 
-    const old_status = delivery.status;
-    delivery.status = "delivered";
-    await saveDelivery(delivery);
-    await addStatusLog({ delivery_id: delivery.id, changed_by: req.user.id, old_status, new_status: "delivered" });
+    const updated = await casDeliveryTransition(delivery.id, delivery.status, (d) => ({ ...d, status: "delivered" }));
+    if (!updated) {
+      throw httpError(409, `This delivery's status changed before this scan went through — reload and try again.`);
+    }
+    await addStatusLog({ delivery_id: updated.id, changed_by: req.user.id, old_status: delivery.status, new_status: "delivered" });
 
-    res.json(withView(delivery, req.user));
+    res.json(withView(updated, req.user));
   } catch (e) {
     next(e);
   }

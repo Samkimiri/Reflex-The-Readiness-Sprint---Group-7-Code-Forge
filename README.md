@@ -281,21 +281,24 @@ probe which tokens are real.
   ownership, letting any retailer view or cancel any other retailer's
   deliveries — fixed, and covered by a regression test in
   `backend/test/api.test.js` so it can't quietly come back.)
-- **Rate limiting on `/api/auth/*`** (`express-rate-limit`, 30 requests per
-  15 minutes per IP) is best-effort: a serverless deployment runs several
-  concurrent instances, each with its own in-memory counter, so a
-  distributed attacker can partially evade it by spreading requests across
-  instances. Real protection at that level needs a shared store (the same
-  Redis already used for data would work) — a reasonable next step if this
-  ever needs to withstand a serious credential-stuffing attempt rather than
-  casual abuse.
+- **Rate limiting on `/api/auth/*` and `/api/track/*`** (30 and 60 requests
+  per 15 minutes per IP) is shared across every serverless instance via
+  `@upstash/ratelimit` on the same Redis the data layer already connects
+  to, not a separate per-instance in-memory counter — a distributed
+  attacker spreading requests across instances no longer partially evades
+  it. Falls back to the old in-memory limiter only when no Redis is
+  configured (local dev, where there's exactly one instance anyway, so
+  in-memory is already exact).
 - **CSP and other security headers** via `helmet`, scoped to exactly what
   this app loads (jsQR from cdnjs, Google Identity Services, same-origin
   fetches, `data:`/`blob:` images for product photos and the QR code).
-- **`JWT_SECRET` must be a real secret in production** — the code falls
-  back to a hardcoded dev value otherwise, which is fine on `localhost` but
-  not once the source is public. Vercel's env var UI is where to set it
-  (see the deployment section above).
+- **`JWT_SECRET` must be a real secret in production, and the server
+  refuses to start without one.** The hardcoded dev fallback only applies
+  when `VERCEL` isn't set (i.e. `npm start` locally) — on Vercel with no
+  `JWT_SECRET` configured, `server.js` throws at startup instead of
+  silently signing every login token with a value that's sitting in this
+  public repo. Vercel's env var UI is where to set it (see the deployment
+  section below).
 - Passwords and emails are validated server-side (minimum length, basic
   email shape), not just in the browser — client-side `required`/`type`
   attributes are a UX nicety, not a security boundary, since anyone can
@@ -437,13 +440,26 @@ probe which tokens are real.
 
 ## Architecture notes / where this differs from the original design doc
 
-- **Data store:** a JSON file (`backend/data/db.json`) instead of PostgreSQL,
-  so the whole thing runs with zero setup — no DB server to install for a
-  one-week sprint. The schema is identical (`users`, `deliveries`,
-  `status_log`) and every read/write goes through `db.js`, so swapping in
-  real Postgres later means rewriting that one file, not the routes or the
-  state machine. Worth naming this trade-off explicitly if a panelist asks
-  why it's not Postgres.
+- **Data store:** a JSON file (`backend/data/db.json`) locally, or a
+  per-table Redis hash on Vercel (see below), instead of PostgreSQL — the
+  whole thing runs with zero setup for a one-week sprint, no DB server to
+  install. The schema is identical (`users`, `deliveries`, `status_log`)
+  and every read/write goes through `db.js`, so swapping in real Postgres
+  later means rewriting that one file's storage primitives, not the routes
+  or the state machine. Worth naming this trade-off explicitly if a
+  panelist asks why it's not Postgres.
+  - Each record lives at its own address (a field in a per-table Redis
+    hash; a mutex-serialized slot in the local file) rather than the whole
+    database being one JSON blob read-modify-written on every write — that
+    used to mean any two concurrent writes anywhere in the app, not just
+    to the same record, could silently clobber each other on Vercel's
+    multiple concurrent instances. A delivery's status transition
+    (assign/pick_up/cancel/deliver) and account uniqueness (email/phone at
+    registration) get their own explicit atomic guarantees on top of that
+    (a Lua script for the former, `SETNX` for the latter) — both were
+    previously check-then-act races, now a genuine compare-and-swap with
+    no window for two requests to both "win." See the comment at the top
+    of `db.js` for the full reasoning.
 - **Frontend:** plain HTML/CSS/JS instead of a React build, again to keep
   `npm install && npm start` as the entire setup. The API is a normal REST
   API underneath, so swapping in a React frontend later doesn't touch the
@@ -494,7 +510,8 @@ are served from the same place, just like local dev).
 filesystem, so the JSON-file store (`backend/data/db.json`) that's used
 locally can't persist there. `backend/db.js` automatically switches to
 Upstash Redis when `KV_REST_API_URL` / `KV_REST_API_TOKEN` are present in the
-environment, keeping the exact same data shape. To enable it:
+environment — same schema, same higher-level functions, just a different
+storage layout under the hood (see the Data store note above). To enable it:
 
 1. Deploy the project to Vercel (import the repo, or `vercel --prod`).
 2. In the Vercel dashboard, go to **Storage → Marketplace Database
