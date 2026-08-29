@@ -115,12 +115,10 @@ body {
    photo, so a tall/narrow (mobile) crop of a wide 16:9 image still keeps
    them in frame instead of a blind center-crop cutting them off. Plain
    `cover` gives zero vertical slack to pan within on this layout (height
-   is always the binding dimension, mobile or desktop), so the dispatcher
-   and rider photos — where the subject isn't dead-center — are sized a
-   bit larger than a strict cover fit specifically to create that slack,
-   then positioned within it. The retailer photo's aisle shot is already
-   symmetric enough that the default cover/center from .hero-bg-photo
-   works fine as-is. */
+   is always the binding dimension, mobile or desktop), so each photo is
+   sized a bit larger than a strict cover fit specifically to create that
+   slack, then positioned within it. */
+.hero-bg-photo[data-role="retailer"] { background-size: auto 130%; background-position: 55% 90%; }
 .hero-bg-photo[data-role="rider"] { background-size: auto 130%; background-position: 58% 20%; }
 .hero-bg-photo[data-role="dispatcher"] { background-size: auto 118%; background-position: 55% 100%; }
 
