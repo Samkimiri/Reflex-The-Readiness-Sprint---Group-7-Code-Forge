@@ -1,0 +1,40 @@
+# Render Blueprint for Reflex. Lets Render provision this service from a
+# single "New Blueprint" import instead of manually filling in every field
+# in the dashboard — same spirit as vercel.json for the Vercel deployment.
+#
+# This app doesn't need anything Render-specific: it's a plain Express app
+# that listens on process.env.PORT (Render sets this automatically) and
+# serves both the API and the static frontend from the same process — no
+# separate static site, no build step. The only real setup is the
+# environment variables below, since Render's own filesystem is just as
+# ephemeral as Vercel's serverless one (data wouldn't survive a restart or
+# redeploy without a real database — see README's "Deploying to Render"
+# section for the exact values each of these needs).
+services:
+  - type: web
+    name: reflex-readiness-sprint
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: npm start
+    envVars:
+      # Render doesn't set this on its own the way Vercel sets VERCEL=1 —
+      # server.js's JWT_SECRET fail-fast check needs it to know this is a
+      # real deployment, not someone's laptop.
+      - key: NODE_ENV
+        value: production
+      # Secrets — set once in the Render dashboard after the first deploy,
+      # `sync: false` just means "don't auto-generate/manage this," not
+      # "leave it empty." See README for where each value comes from.
+      - key: JWT_SECRET
+        sync: false
+      - key: KV_REST_API_URL
+        sync: false
+      - key: KV_REST_API_TOKEN
+        sync: false
+      - key: ADMIN_SEED_PASSWORD
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: BLOB_READ_WRITE_TOKEN
+        sync: false

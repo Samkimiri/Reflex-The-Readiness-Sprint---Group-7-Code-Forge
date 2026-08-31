@@ -693,3 +693,57 @@ successful deployment, so nothing *looks* broken until you check the
 Deployments tab and see recent ones stuck on `BLOCKED` (or the CLI shows
 `UNKNOWN`). Fix: `git config user.email you@example.com` with an email
 GitHub recognizes for your account, then push again.
+
+## Deploying to Render
+
+Render runs this app as a normal, always-on Node process (`npm start`,
+listening on `process.env.PORT`, which Render sets automatically) rather
+than a serverless function — no `api/index.js` wrapper needed there, and
+no cold starts. `render.yaml` at the repo root is a Blueprint: importing it
+in Render provisions the service with the right build/start commands
+already filled in, instead of setting each field by hand.
+
+Render's own filesystem is just as ephemeral as Vercel's serverless one —
+a restart or redeploy wipes it — so the same Redis-backed persistence
+`db.js` already supports is what makes this a real deployment instead of a
+demo that forgets everything. This walkthrough sets up a deployment with
+its **own independent data** (a fresh Redis + optional Blob store, not the
+same ones the Vercel deployment uses) — do this if you want two genuinely
+separate instances, e.g. to compare platforms or keep one as a backup that
+can't be affected by a bug in the other.
+
+1. **Push this repo to GitHub** (already done, if you're reading this from
+   there) and go to [render.com](https://render.com) → **New** → **Blueprint**
+   → connect the repo. Render reads `render.yaml` and proposes the service.
+2. **Create an independent Redis database at [upstash.com](https://upstash.com)**
+   (a separate account from Vercel's bundled one — Upstash's own free tier
+   is generous and needs no credit card). Create a database, then from its
+   dashboard copy the **REST API** `UPSTASH_REDIS_REST_URL` and
+   `UPSTASH_REDIS_REST_TOKEN` values — these are what `KV_REST_API_URL` /
+   `KV_REST_API_TOKEN` below expect (same REST client this app already
+   uses for the Vercel deployment, just a different database instance).
+3. In the Render dashboard, under the new service's **Environment**, set:
+   - `JWT_SECRET` — a real random secret, **different from the one Vercel
+     uses** (two independent deployments shouldn't trust each other's
+     tokens). Generate one locally: `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`
+   - `KV_REST_API_URL` / `KV_REST_API_TOKEN` — from step 2.
+   - `ADMIN_SEED_PASSWORD` (optional) — sets the seeded admin's password on
+     first boot; omit it to use the same `admin123` default as local dev.
+   - `GOOGLE_CLIENT_ID` (optional) — only if you want Google sign-in
+     working on this deployment too; needs its own OAuth client if so,
+     since Google Client IDs are tied to authorized origins/domains.
+   - `BLOB_READ_WRITE_TOKEN` (optional) — skip this for a truly independent
+     setup; product/profile photos fall back to base64-in-Redis
+     automatically (see the Image storage note above), which is fine at
+     this scale. Only set it if you specifically want Render's photos on a
+     real CDN too — that means creating a *second* Vercel Blob store (the
+     product works from any server, not just ones running on Vercel), not
+     reusing the one already connected to the Vercel deployment.
+4. Deploy. First request after that seeds the three demo accounts (plus
+   the admin account) into this Redis instance, same as every other fresh
+   environment this app has ever booted into.
+
+Without Redis configured, the app still deploys and runs on Render, but
+falls back to writing `backend/data/db.json` inside the service's own
+ephemeral disk — it'll work until the next restart or redeploy, then reset.
+Fine for a quick look, not for a live demo you want to keep coming back to.

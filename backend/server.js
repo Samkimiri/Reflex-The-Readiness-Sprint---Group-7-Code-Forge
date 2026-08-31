@@ -18,12 +18,21 @@ const { kv } = require("./db");
 // forged by anyone who's read this file — fine on localhost, not once the
 // source is public. Failing loudly at startup (not just noting it in the
 // README) means a real deployment can't accidentally go live without a
-// real secret set. VERCEL is set automatically by the platform; this never
-// fires for local dev, where the fallback in middleware/auth.js is fine.
-if (process.env.VERCEL && !process.env.JWT_SECRET) {
+// real secret set.
+//
+// Checks both signals rather than just one platform's: VERCEL is set
+// automatically by Vercel itself, so that half needs no action from
+// whoever's deploying there. Other platforms (Render, Railway, a plain VPS,
+// ...) don't set anything this app can detect on its own — NODE_ENV=production
+// is the actual cross-platform convention, but it has to be set explicitly
+// wherever this deploys next; it's not implied just by "not on Vercel."
+// Neither fires for local dev (`npm start` sets neither), where the
+// fallback in middleware/auth.js is fine.
+if ((process.env.VERCEL || process.env.NODE_ENV === "production") && !process.env.JWT_SECRET) {
   throw new Error(
     "JWT_SECRET must be set in production — refusing to start with the hardcoded dev fallback. " +
-      "Set it in the Vercel project's environment variables."
+      "Set it in your hosting platform's environment variables (and set NODE_ENV=production too, " +
+      "if the platform doesn't already do that for you)."
   );
 }
 
