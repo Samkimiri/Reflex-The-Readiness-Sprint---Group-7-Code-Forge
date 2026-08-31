@@ -9,3 +9,6 @@ backend/data/db.json
 # Local Claude Code skill installs (e.g. ui-ux-pro-max) — tooling config
 # for the assistant, not part of the app; no reason to ship it in the repo.
 .claude/
+
+.vercel
+.env*.local

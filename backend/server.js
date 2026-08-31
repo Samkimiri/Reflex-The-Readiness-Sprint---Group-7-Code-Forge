@@ -48,7 +48,12 @@ app.use(
         scriptSrc: ["'self'", "https://cdnjs.cloudflare.com", "https://cdn.jsdelivr.net", "https://accounts.google.com"],
         styleSrc: ["'self'", "'unsafe-inline'", "https://fonts.googleapis.com"], // inline `style="..."` attributes in a few modals + the Inter stylesheet
         fontSrc: ["'self'", "https://fonts.gstatic.com"], // the actual Inter font files, served from Google's font CDN
-        imgSrc: ["'self'", "data:", "blob:", "https://*.gstatic.com", "https://accounts.google.com"],
+        // *.public.blob.vercel-storage.com — where product/profile photos
+        // live once BLOB_READ_WRITE_TOKEN is configured (see imageStore.js);
+        // without this, those images would 404 silently against CSP in any
+        // browser, not fail loudly, so it's easy to miss until you actually
+        // look at a page with one on it.
+        imgSrc: ["'self'", "data:", "blob:", "https://*.gstatic.com", "https://accounts.google.com", "https://*.public.blob.vercel-storage.com"],
         connectSrc: ["'self'", "https://accounts.google.com"],
         frameSrc: ["https://accounts.google.com"],
         workerSrc: ["'self'"],

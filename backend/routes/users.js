@@ -2,6 +2,7 @@ const express = require("express");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const { findUserByPhone, findUserById, listUsers, saveUser } = require("../db");
+const { storeImage, deleteImage } = require("../imageStore");
 
 const router = express.Router();
 
@@ -132,6 +133,7 @@ router.patch("/me", async (req, res) => {
   }
 
   if (image !== undefined) {
+    const oldImage = req.user.image;
     if (image === null || image === "") {
       req.user.image = null;
     } else {
@@ -141,8 +143,11 @@ router.patch("/me", async (req, res) => {
       if (image.length > MAX_IMAGE_DATA_URL_LENGTH) {
         return res.status(400).json({ error: "Image is too large — try a smaller photo." });
       }
-      req.user.image = image;
+      req.user.image = await storeImage(image, "avatars");
     }
+    // Fire-and-forget — deleteImage handles its own failures internally
+    // (see imageStore.js), so this never blocks or fails the actual edit.
+    if (oldImage) deleteImage(oldImage);
   }
 
   const saved = await saveUser(req.user);

@@ -563,6 +563,20 @@ probe which tokens are real.
   `npm install && npm start` as the entire setup. The API is a normal REST
   API underneath, so swapping in a React frontend later doesn't touch the
   backend at all.
+- **Image storage:** product photos and profile pictures (`backend/imageStore.js`)
+  follow the exact same "zero setup, upgrades automatically when configured"
+  shape as the data store and rate limiting above. Locally, an uploaded
+  photo is stored as a base64 data URL right inside the record — always
+  has been, no setup needed. On Vercel, where this project has a
+  [Vercel Blob](https://vercel.com/docs/vercel-blob) store connected
+  (`BLOB_READ_WRITE_TOKEN` auto-injected), it's uploaded there instead and
+  only the resulting CDN URL is stored — the DB record stays small instead
+  of every read dragging ~50-450KB of image bytes along with it, and the
+  photo gets a real CDN in front of it. Replacing or clearing a photo
+  deletes the old blob (fire-and-forget, best-effort); deleting a product
+  deletes its photo too. Nothing about the frontend changed — it already
+  treated `image` as an opaque URL string, whether that was a `data:` URL
+  or an `https://` one.
 
 ## Known gaps — deliberately not built yet
 
@@ -571,12 +585,6 @@ trade-off log above. These either need an external account/service this
 repo doesn't have credentials for, or are big enough to deserve their own
 focused pass instead of being rushed in alongside something else:
 
-- **Product photos are stored as base64 data URLs** inside the product
-  record itself (`backend/routes/products.js`), not real object storage.
-  Fine at demo scale; every read of that record drags the image bytes with
-  it, and Redis is holding image data it wasn't built for. Needs an object
-  storage provider (Vercel Blob, S3, Cloudinary, ...) and someone to
-  actually provision one — not something to wire up on a guess.
 - **No error tracking/monitoring** beyond Vercel's own runtime logs, which
   have short retention. A production 500 today is only visible if someone
   thinks to go pull them. Needs a real provider (Sentry or similar) and an
@@ -660,6 +668,20 @@ Without the Redis integration connected, the app still deploys and runs, but
 falls back to writing `db.json` inside the function's `/tmp` — data won't be
 shared across function instances and can reset at any time. Fine for a quick
 look, not for a live multi-role demo.
+
+**Image storage on Vercel** works the same optional-upgrade way (see the
+Image storage note above). To enable it:
+
+1. In the Vercel dashboard (or `vercel blob create-store <name> --access
+   public`), create a Blob store and connect it to this project — this
+   auto-injects `BLOB_READ_WRITE_TOKEN` into every environment (production,
+   preview, and, if you asked for it, development).
+2. Redeploy so the new environment variable takes effect. No other setup —
+   `backend/imageStore.js` picks it up automatically.
+
+Without a Blob store connected, product/profile photos keep working exactly
+as before: stored as base64 inside the record. Nothing breaks; you just
+don't get the smaller records / real CDN benefit until it's connected.
 
 ### If auto-deploy silently stops working
 

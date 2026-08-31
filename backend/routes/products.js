@@ -1,5 +1,6 @@
 const express = require("express");
 const { createProduct, listProducts, getProductById, deleteProduct, saveProduct } = require("../db");
+const { storeImage, deleteImage } = require("../imageStore");
 
 const router = express.Router();
 
@@ -42,7 +43,7 @@ router.post("/", async (req, res) => {
     if (image.length > MAX_IMAGE_DATA_URL_LENGTH) {
       return res.status(400).json({ error: "Image is too large — try a smaller photo." });
     }
-    parsedImage = image;
+    parsedImage = await storeImage(image, "products");
   }
 
   const product = await createProduct({
@@ -89,6 +90,7 @@ router.patch("/:id", async (req, res) => {
   }
 
   if (image !== undefined) {
+    const oldImage = product.image;
     if (image === null || image === "") {
       product.image = null;
     } else {
@@ -98,8 +100,11 @@ router.patch("/:id", async (req, res) => {
       if (image.length > MAX_IMAGE_DATA_URL_LENGTH) {
         return res.status(400).json({ error: "Image is too large — try a smaller photo." });
       }
-      product.image = image;
+      product.image = await storeImage(image, "products");
     }
+    // Fire-and-forget — deleteImage handles its own failures internally
+    // (see imageStore.js), so this never blocks or fails the actual edit.
+    if (oldImage) deleteImage(oldImage);
   }
 
   const saved = await saveProduct(product);
@@ -114,6 +119,7 @@ router.delete("/:id", async (req, res) => {
     return res.status(403).json({ error: "You can only remove your own products." });
   }
   await deleteProduct(product.id);
+  if (product.image) deleteImage(product.image); // fire-and-forget, see imageStore.js
   res.status(204).end();
 });
 

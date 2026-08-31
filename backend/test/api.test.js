@@ -625,6 +625,54 @@ test("a retailer can edit their own product; another retailer cannot", async () 
   assert.equal(emptyName.status, 400);
 });
 
+// This suite runs with no BLOB_READ_WRITE_TOKEN set (see the imageStore.js
+// comment for why that's the actual CI/local-dev path), so storeImage()
+// returns whatever it was given unchanged — the same contract this test
+// suite has always relied on for profile images. This locks in that same
+// contract for products, plus the create -> replace -> clear lifecycle and
+// input validation, none of which had explicit coverage before.
+test("product photos: create, replace, and clear a product's image", async () => {
+  const suffix = Date.now();
+  const owner = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Photo Owner", phone: `0761${suffix % 1000000}`, email: `photo-owner-${suffix}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+
+  const created = await api("/api/products", {
+    method: "POST",
+    token: owner.token,
+    body: { name: "Photographed Product", image: "data:image/png;base64,AAAA" },
+  });
+  assert.equal(created.status, 201);
+  assert.equal(created.data.image, "data:image/png;base64,AAAA");
+  const productId = created.data.id;
+
+  const badImage = await api("/api/products", {
+    method: "POST",
+    token: owner.token,
+    body: { name: "Bad Photo Product", image: "not-a-data-url" },
+  });
+  assert.equal(badImage.status, 400);
+
+  const replaced = await api(`/api/products/${productId}`, {
+    method: "PATCH",
+    token: owner.token,
+    body: { image: "data:image/png;base64,BBBB" },
+  });
+  assert.equal(replaced.status, 200);
+  assert.equal(replaced.data.image, "data:image/png;base64,BBBB");
+
+  const cleared = await api(`/api/products/${productId}`, {
+    method: "PATCH",
+    token: owner.token,
+    body: { image: null },
+  });
+  assert.equal(cleared.status, 200);
+  assert.equal(cleared.data.image, null);
+});
+
 test("a user can edit their own profile; a duplicate phone is rejected", async () => {
   const suffix = Date.now();
   const userA = (
