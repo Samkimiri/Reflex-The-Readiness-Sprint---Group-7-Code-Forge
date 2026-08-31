@@ -695,6 +695,7 @@ h2 { font-size: 20px; margin: 0 0 4px; }
   transition: box-shadow 0.2s ease;
 }
 .panel:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
+.panel-alert { border-left: 4px solid var(--cherry); }
 
 .panel h3 { margin: 0 0 14px; font-size: 15px; }
 

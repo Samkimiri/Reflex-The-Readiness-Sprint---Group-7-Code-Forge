@@ -50,6 +50,17 @@ async function api(reqPath, { method = "GET", token, body } = {}) {
   return { status: res.status, data };
 }
 
+// A self-registered dispatcher now starts unapproved (see the dedicated
+// approval-lifecycle test) — most other tests just need a dispatcher that
+// actually works, so this logs in as the seeded admin and approves one.
+async function approveDispatcher(dispatcherId) {
+  const adminLogin = await api("/api/auth/login", {
+    method: "POST",
+    body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "admin123" },
+  });
+  await api(`/api/users/${dispatcherId}/approve`, { method: "PATCH", token: adminLogin.data.token });
+}
+
 test("health check responds without auth or waiting on seeding", async () => {
   const { status, data } = await api("/api/health");
   assert.equal(status, 200);
@@ -138,6 +149,7 @@ test("full delivery lifecycle enforces role checks at each step", async () => {
       body: { name: "D", phone: `0722${suffix % 1000000}`, email: `d-${suffix}@example.com`, password: "testpass1", role: "dispatcher" },
     })
   ).data;
+  await approveDispatcher(dispatcher.user.id);
   const rider = (
     await api("/api/auth/register", {
       method: "POST",
@@ -206,6 +218,7 @@ test("two concurrent assign requests for the same delivery: exactly one succeeds
       body: { name: "D2", phone: `0732${suffix % 1000000}`, email: `d2-${suffix}@example.com`, password: "testpass1", role: "dispatcher" },
     })
   ).data;
+  await approveDispatcher(dispatcher.user.id);
   const riderA = (
     await api("/api/auth/register", {
       method: "POST",
@@ -298,6 +311,7 @@ test("a delivery is only visible/actionable to parties actually involved in it",
       body: { name: "D2", phone: `0733${suffix % 1000000}`, email: `d2-${suffix}@example.com`, password: "testpass1", role: "dispatcher" },
     })
   ).data;
+  await approveDispatcher(dispatcher.user.id);
   const uninvolvedRider = (
     await api("/api/auth/register", {
       method: "POST",
@@ -396,6 +410,159 @@ test("admin has full oversight: sees every user and every retailer's deliveries"
 
   const oneDelivery = await api(`/api/deliveries/${created.data.id}`, { token: adminToken });
   assert.equal(oneDelivery.status, 200);
+});
+
+// Regression test for the dispatcher self-registration gap: a dispatcher
+// used to get full system-wide oversight (every retailer's deliveries,
+// full read+write) the instant they self-registered, with nothing else
+// gating that access. Now a self-registered dispatcher starts unapproved
+// and is blocked from every dispatcher-level read/write until an admin
+// approves them — this walks the whole lifecycle end to end.
+test("a self-registered dispatcher is unapproved until admin approves them", async () => {
+  const suffix = Date.now();
+  const retailer = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Approval Test Retailer", phone: `0751${suffix % 1000000}`, email: `approval-retailer-${suffix}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+  const created = await api("/api/deliveries", {
+    method: "POST",
+    token: retailer.token,
+    body: { customer_name: "Gated Delivery", customer_phone: "0700111000", address: "Nairobi", item_description: "Approval gate check" },
+  });
+  const deliveryId = created.data.id;
+
+  const dispatcherReg = await api("/api/auth/register", {
+    method: "POST",
+    body: { name: "New Dispatcher", phone: `0752${suffix % 1000000}`, email: `new-dispatcher-${suffix}@example.com`, password: "testpass1", role: "dispatcher" },
+  });
+  assert.equal(dispatcherReg.status, 201);
+  assert.equal(dispatcherReg.data.user.approved, false);
+  const dispatcherToken = dispatcherReg.data.token;
+  const dispatcherId = dispatcherReg.data.user.id;
+
+  // Blocked from the system-wide list...
+  const blockedList = await api("/api/deliveries", { token: dispatcherToken });
+  assert.equal(blockedList.status, 403);
+  assert.match(blockedList.data.error, /pending admin approval/);
+
+  // ...blocked from a single delivery's detail (404, not 403 — same
+  // IDOR-safe pattern as every other unauthorized-access check here)...
+  const blockedDetail = await api(`/api/deliveries/${deliveryId}`, { token: dispatcherToken });
+  assert.equal(blockedDetail.status, 404);
+
+  // ...and blocked from actually assigning a rider.
+  const rider = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Approval Test Rider", phone: `0753${suffix % 1000000}`, email: `approval-rider-${suffix}@example.com`, password: "testpass1", role: "rider" },
+    })
+  ).data;
+  const blockedAssign = await api(`/api/deliveries/${deliveryId}/assign`, {
+    method: "PATCH",
+    token: dispatcherToken,
+    body: { rider_id: rider.user.id },
+  });
+  assert.equal(blockedAssign.status, 403);
+  assert.match(blockedAssign.data.error, /pending admin approval/);
+
+  // A non-admin can't approve them...
+  const badApprove = await api(`/api/users/${dispatcherId}/approve`, { method: "PATCH", token: retailer.token });
+  assert.equal(badApprove.status, 403);
+
+  // ...but admin can.
+  const adminLogin = await api("/api/auth/login", { method: "POST", body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "admin123" } });
+  const adminToken = adminLogin.data.token;
+  const approve = await api(`/api/users/${dispatcherId}/approve`, { method: "PATCH", token: adminToken });
+  assert.equal(approve.status, 200);
+  assert.equal(approve.data.approved, true);
+
+  // Approving twice is rejected, not silently a no-op.
+  const doubleApprove = await api(`/api/users/${dispatcherId}/approve`, { method: "PATCH", token: adminToken });
+  assert.equal(doubleApprove.status, 400);
+
+  // Now the same dispatcher token — unchanged, still their original
+  // login — actually works, because approval is checked live against the
+  // current user record on every request, not baked into the JWT.
+  const allowedList = await api("/api/deliveries", { token: dispatcherToken });
+  assert.equal(allowedList.status, 200);
+
+  const allowedAssign = await api(`/api/deliveries/${deliveryId}/assign`, {
+    method: "PATCH",
+    token: dispatcherToken,
+    body: { rider_id: rider.user.id },
+  });
+  assert.equal(allowedAssign.status, 200);
+  assert.equal(allowedAssign.data.status, "assigned");
+});
+
+test("approve rejects a non-dispatcher account", async () => {
+  const suffix = Date.now();
+  const retailer = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Not A Dispatcher", phone: `0754${suffix % 1000000}`, email: `not-dispatcher-${suffix}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+  const adminLogin = await api("/api/auth/login", { method: "POST", body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "admin123" } });
+  const { status, data } = await api(`/api/users/${retailer.user.id}/approve`, { method: "PATCH", token: adminLogin.data.token });
+  assert.equal(status, 400);
+  assert.match(data.error, /Only dispatcher accounts/);
+});
+
+test("admin-mediated password reset: admin-only, and the new password actually works", async () => {
+  const suffix = Date.now();
+  const email = `reset-target-${suffix}@example.com`;
+  const target = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Reset Target", phone: `0755${suffix % 1000000}`, email, password: "originalpass1", role: "retailer" },
+    })
+  ).data;
+
+  // A non-admin can't trigger it.
+  const badReset = await api(`/api/users/${target.user.id}/reset-password`, { method: "POST", token: target.token });
+  assert.equal(badReset.status, 403);
+
+  const adminLogin = await api("/api/auth/login", { method: "POST", body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "admin123" } });
+  const reset = await api(`/api/users/${target.user.id}/reset-password`, { method: "POST", token: adminLogin.data.token });
+  assert.equal(reset.status, 200);
+  assert.ok(reset.data.tempPassword && reset.data.tempPassword.length >= 8);
+
+  const oldLogin = await api("/api/auth/login", { method: "POST", body: { email, password: "originalpass1" } });
+  assert.equal(oldLogin.status, 401);
+
+  const newLogin = await api("/api/auth/login", { method: "POST", body: { email, password: reset.data.tempPassword } });
+  assert.equal(newLogin.status, 200);
+});
+
+test("GET /api/deliveries pagination is opt-in and doesn't change the default response shape", async () => {
+  const suffix = Date.now();
+  const retailer = (
+    await api("/api/auth/register", {
+      method: "POST",
+      body: { name: "Pagination Test", phone: `0756${suffix % 1000000}`, email: `pagination-${suffix}@example.com`, password: "testpass1", role: "retailer" },
+    })
+  ).data;
+  await api("/api/deliveries", {
+    method: "POST",
+    token: retailer.token,
+    body: { customer_name: "Pagination Check", customer_phone: "0700222333", address: "Nairobi", item_description: "Ensures at least one delivery exists" },
+  });
+
+  const adminLogin = await api("/api/auth/login", { method: "POST", body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "admin123" } });
+  const adminToken = adminLogin.data.token;
+
+  const unpaged = await api("/api/deliveries", { token: adminToken });
+  assert.equal(unpaged.status, 200);
+  assert.ok(Array.isArray(unpaged.data));
+
+  const paged = await api("/api/deliveries?limit=1&offset=0", { token: adminToken });
+  assert.equal(paged.status, 200);
+  assert.ok(Array.isArray(paged.data.items));
+  assert.equal(paged.data.items.length, 1);
+  assert.equal(paged.data.total, unpaged.data.length);
 });
 
 test("only a dispatcher or admin can list users; a retailer/rider cannot", async () => {
@@ -516,6 +683,7 @@ test("delivery chat: involved parties can read/post, admin is read-only, outside
       body: { name: "Chat Dispatcher", phone: `0772${suffix % 1000000}`, email: `chatd-${suffix}@example.com`, password: "testpass1", role: "dispatcher" },
     })
   ).data;
+  await approveDispatcher(dispatcher.user.id);
   const rider = (
     await api("/api/auth/register", {
       method: "POST",

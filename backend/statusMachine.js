@@ -31,6 +31,14 @@ function canTransition(from, to) {
 }
 
 function assertRole(action, user, delivery) {
+  // A self-registered dispatcher starts unapproved (see auth.js) — until an
+  // admin reviews them, they're blocked from every dispatcher-level action.
+  // Every other role's capability is already scoped narrowly enough (a
+  // retailer only their own deliveries, a rider only deliveries a dispatcher
+  // assigned them) that this gate doesn't need to apply to them.
+  if (user.role === "dispatcher" && user.approved === false) {
+    throw httpError(403, "Your dispatcher account is pending admin approval.");
+  }
   switch (action) {
     case "assign":
       if (user.role !== "dispatcher" && user.role !== "admin") throw httpError(403, "Only a dispatcher can assign a rider.");

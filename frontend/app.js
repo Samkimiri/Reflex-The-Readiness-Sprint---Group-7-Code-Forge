@@ -945,7 +945,12 @@ function enterApp() {
   // system) that an admin typically leaves open while doing other things —
   // a full re-render every 5s is wasted work for a screen nobody's mid-task
   // on. It gets the same manual refresh button as the retailer view instead.
-  if (state.user.role !== "retailer" && state.user.role !== "admin") {
+  // A pending (unapproved) dispatcher is excluded too — every fetch their
+  // dashboard would make just 403s until an admin approves them, so
+  // polling would only mean a toast every 5s for something that isn't
+  // going to change until they reload after approval.
+  const isPendingDispatcher = state.user.role === "dispatcher" && state.user.approved === false;
+  if (state.user.role !== "retailer" && state.user.role !== "admin" && !isPendingDispatcher) {
     // skeleton:false — a skeleton flashing over live data every 5s would
     // be more distracting than the brief blank moment it's meant to fix;
     // it's only useful for the "nothing on screen yet" case below.
@@ -957,11 +962,27 @@ function enterApp() {
 function render(opts = {}) {
   const root = document.getElementById("view-root");
   if (!root) return console.warn("Reflex: #view-root not found — hard-refresh to fix.");
+  if (state.user.role === "dispatcher" && state.user.approved === false) return renderPendingDispatcher(root);
   if (opts.skeleton !== false) showSkeleton(root, state.user.role);
   if (state.user.role === "retailer") return renderRetailer(root);
   if (state.user.role === "dispatcher") return renderDispatcher(root);
   if (state.user.role === "rider") return renderRider(root);
   if (state.user.role === "admin") return renderAdmin(root);
+}
+
+// Shown instead of the real dispatcher dashboard for a self-registered
+// account an admin hasn't approved yet (see the approval gate in
+// statusMachine.js and deliveries.js) — every fetch the real dashboard
+// would make just 403s, so this replaces it outright rather than showing a
+// broken dashboard full of error toasts.
+function renderPendingDispatcher(root) {
+  setViewHTML(root, `
+    <div class="panel">
+      <h2>Pending approval</h2>
+      <p class="subtitle">Dispatcher accounts get full visibility into every retailer's deliveries, so a new one needs an admin to approve it before it can do anything.</p>
+      <div class="empty-state">Your account is registered but not yet approved. Ask your admin to approve it, then reload this page — no need to register again.</div>
+    </div>
+  `);
 }
 
 // Shimmer placeholder shown the moment a role's view starts loading (first
@@ -1685,6 +1706,7 @@ async function renderAdmin(root) {
   const usersById = Object.fromEntries(users.map((u) => [u.id, u]));
   const byRole = countBy(users, (u) => u.role);
   const byStatus = countBy(deliveries, (d) => d.status);
+  const pendingDispatchers = users.filter((u) => u.role === "dispatcher" && u.approved === false);
 
   setViewHTML(root, `
     <div class="view-heading-row">
@@ -1694,6 +1716,29 @@ async function renderAdmin(root) {
         <button class="btn btn-secondary btn-sm" id="admin-refresh" type="button">🔄 Refresh</button>
       </div>
     </div>
+
+    ${pendingDispatchers.length ? `
+      <div class="panel panel-alert">
+        <h3>⚠️ Pending dispatcher approvals (${pendingDispatchers.length})</h3>
+        <p class="subtitle">A dispatcher account gets full visibility into every retailer's deliveries — new signups wait here until you approve them. This is the one write action this view has.</p>
+        <div class="table-scroll">
+          <table class="data-table">
+            <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Registered</th><th></th></tr></thead>
+            <tbody>
+              ${pendingDispatchers.map((u) => `
+                <tr>
+                  <td>${escapeHtml(u.name)}</td>
+                  <td>${escapeHtml(u.email || "—")}</td>
+                  <td>${escapeHtml(u.phone || "—")}</td>
+                  <td>${fmtTime(u.created_at)}</td>
+                  <td><button class="btn btn-primary btn-sm" data-approve="${u.id}">Approve</button></td>
+                </tr>
+              `).join("")}
+            </tbody>
+          </table>
+        </div>
+      </div>
+    ` : ""}
 
     <div class="panel">
       <h3>At a glance</h3>
@@ -1718,7 +1763,7 @@ async function renderAdmin(root) {
       <h3>All users (${users.length})</h3>
       <div class="table-scroll">
         <table class="data-table">
-          <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Joined</th></tr></thead>
+          <thead><tr><th>Name</th><th>Email</th><th>Phone</th><th>Role</th><th>Status</th><th>Joined</th><th></th></tr></thead>
           <tbody>
             ${users.map((u) => `
               <tr>
@@ -1726,7 +1771,9 @@ async function renderAdmin(root) {
                 <td>${escapeHtml(u.email || "—")}</td>
                 <td>${escapeHtml(u.phone || "—")}</td>
                 <td><span class="role-pill role-${u.role}">${u.role}</span></td>
+                <td>${u.role === "dispatcher" ? (u.approved === false ? `<span class="status-pill status-cancelled">Pending</span>` : `<span class="status-pill status-delivered">Approved</span>`) : "—"}</td>
                 <td>${fmtTime(u.created_at)}</td>
+                <td>${u.role !== "admin" ? `<button class="btn btn-secondary btn-sm" data-reset-password="${u.id}" data-user-name="${escapeHtml(u.name)}">Reset password</button>` : ""}</td>
               </tr>
             `).join("")}
           </tbody>
@@ -1744,6 +1791,31 @@ async function renderAdmin(root) {
 
   root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
   root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr, btn.dataset.qrToken)));
+  root.querySelectorAll("[data-approve]").forEach((btn) => {
+    btn.addEventListener("click", () => withLoading(btn, "Approving…", async () => {
+      try {
+        await api(`/users/${btn.dataset.approve}/approve`, { method: "PATCH" });
+        toast("Dispatcher approved.");
+        renderAdmin(root);
+      } catch (e) {
+        toast(e.message, true);
+      }
+    }));
+  });
+  root.querySelectorAll("[data-reset-password]").forEach((btn) => {
+    btn.addEventListener("click", () => {
+      const name = btn.dataset.userName;
+      if (!confirm(`Reset ${name}'s password? They won't be able to log in with their old one until you give them this new one.`)) return;
+      withLoading(btn, "Resetting…", async () => {
+        try {
+          const result = await api(`/users/${btn.dataset.resetPassword}/reset-password`, { method: "POST" });
+          openTempPasswordModal(result.name, result.tempPassword);
+        } catch (e) {
+          toast(e.message, true);
+        }
+      });
+    });
+  });
 
   document.getElementById("admin-refresh")?.addEventListener("click", (e) => {
     withLoading(e.currentTarget, "Refreshing…", async () => {
@@ -1949,6 +2021,32 @@ function chatBubble(m) {
       </div>
     </div>
   `;
+}
+
+// Shows a just-reset password exactly once — the server never returns it
+// again after this response, so this is the only chance to copy it before
+// relaying it to the user out-of-band.
+function openTempPasswordModal(name, tempPassword) {
+  const modal = openModal(`
+    <button class="modal-close" data-close>&times;</button>
+    <h3>New password for ${escapeHtml(name)}</h3>
+    <p style="font-size:13px;color:var(--muted)">This is shown once. Copy it now and give it to them directly — they should change it after logging in.</p>
+    <div class="qr-backup">
+      <div class="qr-backup-row">
+        <code class="qr-backup-code" id="temp-password-value">${escapeHtml(tempPassword)}</code>
+        <button class="btn btn-secondary btn-sm" id="temp-password-copy-btn" type="button">📋 Copy</button>
+      </div>
+    </div>
+  `);
+  modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
+  modal.querySelector("#temp-password-copy-btn").addEventListener("click", async () => {
+    try {
+      await navigator.clipboard.writeText(tempPassword);
+      toast("Copied.");
+    } catch (e) {
+      toast(tempPassword, false);
+    }
+  });
 }
 
 async function openQrModal(id, qrToken) {
@@ -2168,5 +2266,21 @@ function escapeHtml(str) {
     state.token = token;
     state.user = JSON.parse(user);
     enterApp();
+    // The cached copy is used immediately above so there's no blank/loading
+    // flash on a normal reload, but it can be stale — most importantly, a
+    // dispatcher's `approved` flag can have flipped server-side since this
+    // was cached. Revalidate in the background and re-render if anything
+    // about identity/role/approval actually changed.
+    api("/users/me")
+      .then((fresh) => {
+        const changed = JSON.stringify(fresh) !== JSON.stringify(state.user);
+        state.user = fresh;
+        localStorage.setItem("reflex_user", JSON.stringify(fresh));
+        if (changed) {
+          updateTopbarIdentity();
+          render();
+        }
+      })
+      .catch(() => {}); // offline on load, or the token's since gone stale — the normal 401 handling covers the latter on the next real request
   }
 })();

@@ -39,8 +39,16 @@ router.post("/", async (req, res) => {
   res.status(201).json(withView(delivery, req.user));
 });
 
-// GET /api/deliveries?status=&rider_id=me&retailer_id=me
+// GET /api/deliveries?status=&rider_id=me&retailer_id=me&limit=&offset=
 router.get("/", async (req, res) => {
+  // Same gate as everywhere else a dispatcher acts (see statusMachine.js)
+  // — this route has no other per-delivery filter for dispatcher/admin, so
+  // without this check a pending dispatcher would get every retailer's
+  // customer names/phones/addresses back in one unfiltered call.
+  if (req.user.role === "dispatcher" && req.user.approved === false) {
+    return res.status(403).json({ error: "Your dispatcher account is pending admin approval." });
+  }
+
   const filter = {};
   if (req.query.status) filter.status = req.query.status;
   if (req.query.rider_id) filter.rider_id = req.query.rider_id === "me" ? req.user.id : req.query.rider_id;
@@ -55,6 +63,17 @@ router.get("/", async (req, res) => {
     .slice()
     .sort((a, b) => new Date(b.created_at) - new Date(a.created_at))
     .map((d) => withView(d, req.user));
+
+  // Opt-in only — omitting limit/offset returns the full list exactly as
+  // before, so every existing caller (retailer/dispatcher/rider dashboards)
+  // is unaffected. This exists so a caller that DOES want to page through a
+  // large result set (e.g. admin's system-wide view, as data grows) can,
+  // without every other view needing to change how it calls this endpoint.
+  if (req.query.limit) {
+    const limit = Math.max(1, Math.min(500, Number(req.query.limit) || 100));
+    const offset = Math.max(0, Number(req.query.offset) || 0);
+    return res.json({ items: deliveries.slice(offset, offset + limit), total: deliveries.length, limit, offset });
+  }
 
   res.json(deliveries);
 });
@@ -255,7 +274,11 @@ router.post("/:id/messages", async (req, res) => {
 // healthy, not an operational role); a retailer only their own; a rider
 // only the ones assigned to them.
 function canViewDelivery(user, delivery) {
-  if (user.role === "dispatcher" || user.role === "admin") return true;
+  if (user.role === "admin") return true;
+  // An unapproved dispatcher gets none of the usual dispatcher visibility —
+  // full oversight of every retailer's customer names/phones/addresses is
+  // exactly the access this gate exists to hold back until admin approval.
+  if (user.role === "dispatcher") return user.approved !== false;
   if (user.role === "retailer") return user.id === delivery.retailer_id;
   if (user.role === "rider") return user.id === delivery.rider_id;
   return false;

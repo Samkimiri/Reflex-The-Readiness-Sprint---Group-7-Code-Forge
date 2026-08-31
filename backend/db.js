@@ -341,13 +341,18 @@ async function findUserById(id) {
   return getRecord("users", Number(id));
 }
 
+async function listUsers({ role } = {}) {
+  const users = await getAllRecords("users");
+  return role ? users.filter((u) => u.role === role) : users;
+}
+
 // Claims email/phone/google_id (whichever are non-null) atomically before
 // writing the user, so two concurrent signups for the same email/phone
 // can't both succeed — the loser gets a 409 instead of a silently-broken
 // uniqueness invariant. Throws httpError(409, ...) on conflict, which
 // Express 5 forwards to the central error handler even from routes that
 // don't wrap this in their own try/catch.
-async function createUser({ name, phone = null, email = null, google_id = null, password_hash = null, role }) {
+async function createUser({ name, phone = null, email = null, google_id = null, password_hash = null, role, approved = true }) {
   const claims = [];
   try {
     if (email) {
@@ -372,6 +377,13 @@ async function createUser({ name, phone = null, email = null, google_id = null, 
       google_id,
       password_hash,
       role,
+      // Every role except dispatcher is safe to activate immediately — a
+      // retailer only ever touches their own deliveries and a rider can
+      // only act on deliveries a dispatcher explicitly assigned them.
+      // Dispatcher is different: it's full oversight over every retailer's
+      // deliveries with no other gate, so a self-registered one starts
+      // unapproved until an admin reviews it (see auth.js register/google).
+      approved,
       created_at: new Date().toISOString(),
     };
     await putRecord("users", id, user);
@@ -581,6 +593,7 @@ module.exports = {
   findUserByEmail,
   findUserByGoogleId,
   findUserById,
+  listUsers,
   createUser,
   saveUser,
   createDelivery,

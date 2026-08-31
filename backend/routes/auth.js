@@ -46,7 +46,16 @@ router.post("/register", async (req, res) => {
   // succeed (a check-then-act pair here couldn't guarantee that: both
   // requests could pass the check before either finished writing).
   const password_hash = bcrypt.hashSync(password, 10);
-  const user = await createUser({ name, phone, email, password_hash, role });
+  // A self-registered dispatcher gets full oversight of every retailer's
+  // deliveries the instant they sign up, with nothing else gating that —
+  // unlike retailer (scoped to their own deliveries) or rider (scoped to
+  // deliveries a dispatcher explicitly assigned them), self-signup alone
+  // isn't an appropriate gate for that much access. It starts unapproved
+  // until an admin reviews it (see the pending-approval check in
+  // statusMachine.js and deliveries.js); the seeded demo dispatcher account
+  // and any account an admin creates directly are unaffected.
+  const approved = role !== "dispatcher";
+  const user = await createUser({ name, phone, email, password_hash, role, approved });
   const token = signToken(user);
 
   res.status(201).json({ token, user: publicUser(user) });
@@ -114,7 +123,7 @@ router.post("/google", async (req, res) => {
     if (!ROLES.includes(role)) {
       return res.status(400).json({ error: `role must be one of: ${ROLES.join(", ")}` });
     }
-    user = await createUser({ name: payload.name, email: googleEmail, google_id: payload.sub, role });
+    user = await createUser({ name: payload.name, email: googleEmail, google_id: payload.sub, role, approved: role !== "dispatcher" });
   }
 
   const token = signToken(user);
@@ -130,7 +139,18 @@ function signToken(user) {
 }
 
 function publicUser(u) {
-  return { id: u.id, name: u.name, phone: u.phone, email: u.email || null, role: u.role, image: u.image || null };
+  return {
+    id: u.id,
+    name: u.name,
+    phone: u.phone,
+    email: u.email || null,
+    role: u.role,
+    image: u.image || null,
+    // Only meaningful for dispatcher; every other role is always approved.
+    // Exposed so the frontend can show a clear "pending admin approval"
+    // state instead of a dashboard that will just 403 on every fetch.
+    approved: u.approved !== false,
+  };
 }
 
 module.exports = router;

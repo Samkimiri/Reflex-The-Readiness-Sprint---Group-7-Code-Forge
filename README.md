@@ -152,6 +152,12 @@ about who actually did it. Admin also isn't self-registerable — the
 public `/api/auth/register` role list is still just
 retailer/dispatcher/rider; an admin account only ever comes from seeding.
 
+The one deliberate exception to "oversight, not operations": admin can
+**approve a pending dispatcher** (see the access-control gate in Security
+notes above) and **reset a user's password** when they're locked out —
+both real write actions, both scoped narrowly to problems literally only
+admin can solve, not a general editing capability over other accounts.
+
 ## Product catalog
 
 Retailers manage a simple product catalog (name, optional price, optional
@@ -280,14 +286,34 @@ probe which tokens are real.
 
 ## Security notes
 
-- **Access control is scoped per-party, not just per-role.** A dispatcher
-  legitimately sees and can act on every delivery; a retailer can only see
-  and cancel *their own*; a rider can only see deliveries assigned to
-  *them*. Requesting a delivery you're not party to returns 404, not 403 —
-  deliberately, so an unauthorized request can't be used to confirm a given
-  ID even exists. (An earlier version of this checked role but not
-  ownership, letting any retailer view or cancel any other retailer's
-  deliveries — fixed, and covered by a regression test in
+- **A self-registered dispatcher starts unapproved, and can't act — or even
+  read — anything until an admin approves them.** Dispatcher is full
+  oversight of every retailer's deliveries (customer names, phones,
+  addresses, the works), and unlike retailer or rider that access isn't
+  otherwise scoped down to "their own" — so open self-registration into
+  that role used to mean anyone who filled in a form got it instantly, with
+  no vetting at all. Now `POST /api/auth/register` (and the Google
+  sign-in equivalent) creates a dispatcher account with `approved: false`;
+  every dispatcher-level read and write checks that flag live against the
+  current user record (`statusMachine.js`, `canViewDelivery` in
+  `deliveries.js`), not something baked into the JWT, so an admin approving
+  someone takes effect on their very next request. Admin's "System
+  Overview" screen shows a **Pending dispatcher approvals** panel — the one
+  write action that read-only oversight role has — and the frontend shows
+  an unapproved dispatcher a clear "pending approval" screen instead of a
+  dashboard that would just 403 on every fetch. Covered end-to-end by a
+  regression test in `backend/test/api.test.js` (registration → blocked
+  read/write → admin approval → the same, unchanged token now works).
+  Retailer and rider don't need this gate: a retailer only ever touches
+  their own deliveries, and a rider only ever touches deliveries a
+  dispatcher explicitly assigned them.
+- **Access control is scoped per-party, not just per-role.** A retailer can
+  only see and cancel *their own* deliveries; a rider can only see
+  deliveries assigned to *them*. Requesting a delivery you're not party to
+  returns 404, not 403 — deliberately, so an unauthorized request can't be
+  used to confirm a given ID even exists. (An earlier version of this
+  checked role but not ownership, letting any retailer view or cancel any
+  other retailer's deliveries — fixed, and covered by a regression test in
   `backend/test/api.test.js` so it can't quietly come back.)
 - **Rate limiting on `/api/auth/*` and `/api/track/*`** (30 and 60 requests
   per 15 minutes per IP) is shared across every serverless instance via
@@ -314,6 +340,17 @@ probe which tokens are real.
 - No CORS middleware: the frontend and API are served from the same origin
   by the same Express app, so there's no cross-origin request to allow in
   the first place — `cors()` was removed as unneeded attack surface.
+- **Password reset is admin-mediated, not email-based** — there's no
+  email/SMS provider wired into this app, so there's no way to actually
+  deliver a reset *link*. `POST /api/users/:id/reset-password` (admin-only)
+  generates a random one-time temporary password, returns it in that single
+  response, and never stores or logs the plaintext — only its bcrypt hash
+  persists. The expectation is the same as any of this app's other
+  "generate a code and relay it out-of-band" patterns (the QR backup code,
+  the tracking link): an admin verifies who they're talking to some other
+  way (phone call, in person) before handing it over, and the user changes
+  it via the existing self-service `PATCH /users/me/password` right after
+  logging in.
 
 ## What's actually implemented
 
@@ -486,6 +523,19 @@ probe which tokens are real.
   Chromium supports; the `online` event works everywhere, including
   Safari/iOS, which matters more here than replaying while the tab is
   fully closed
+- **CI** (`.github/workflows/test.yml`) runs the full backend suite on
+  every push and PR to `main` — a regression can't reach production
+  without at least the same 35 checks that would have caught it locally
+  actually running somewhere other than a developer's own machine.
+- **Opt-in pagination** on `GET /api/deliveries` and `GET /api/users` —
+  passing `?limit=&offset=` returns `{ items, total, limit, offset }`
+  instead of a plain array; omitting them returns the full list exactly as
+  before, so every existing view is unaffected. Exists as a guard against
+  unbounded growth on the system-wide views (admin's "all deliveries"/"all
+  users") rather than something every role's own scoped list needs today —
+  a retailer's or rider's own deliveries stay naturally small. Wiring an
+  actual "load more" control into the admin UI is the next step here, not
+  yet done.
 
 ## Architecture notes / where this differs from the original design doc
 
@@ -513,6 +563,39 @@ probe which tokens are real.
   `npm install && npm start` as the entire setup. The API is a normal REST
   API underneath, so swapping in a React frontend later doesn't touch the
   backend at all.
+
+## Known gaps — deliberately not built yet
+
+Called out explicitly rather than left implicit, same spirit as the
+trade-off log above. These either need an external account/service this
+repo doesn't have credentials for, or are big enough to deserve their own
+focused pass instead of being rushed in alongside something else:
+
+- **Product photos are stored as base64 data URLs** inside the product
+  record itself (`backend/routes/products.js`), not real object storage.
+  Fine at demo scale; every read of that record drags the image bytes with
+  it, and Redis is holding image data it wasn't built for. Needs an object
+  storage provider (Vercel Blob, S3, Cloudinary, ...) and someone to
+  actually provision one — not something to wire up on a guess.
+- **No error tracking/monitoring** beyond Vercel's own runtime logs, which
+  have short retention. A production 500 today is only visible if someone
+  thinks to go pull them. Needs a real provider (Sentry or similar) and an
+  account/DSN key this repo doesn't have.
+- **No refresh tokens** — a single 12h JWT, no silent renewal, no
+  revocation list. Reasonable for how this app is used today; a real fix
+  changes login UX (silent refresh, longer-lived refresh-token storage,
+  what "log out everywhere" even means) and deserves its own design pass
+  rather than being bolted on under time pressure.
+- **No 2FA anywhere**, including on the admin account, which has read
+  access to every user's contact info. TOTP (an authenticator app) is
+  buildable without a new external account, unlike SMS-based 2FA — but
+  it's still a real feature (enrollment flow, backup codes, verify-on-login)
+  that deserves being scoped on its own.
+- **No relational database.** The JSON-file/Redis-hash data layer above is
+  a deliberate trade-off for a zero-setup prototype, but it's worth
+  restating as a real limitation on its own: no relational queries, no
+  migration tooling, no backup/restore story beyond whatever the Redis
+  provider does by default.
 
 ## Project structure
 
