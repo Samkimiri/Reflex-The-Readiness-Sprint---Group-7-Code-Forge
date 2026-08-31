@@ -722,7 +722,20 @@ can't be affected by a bug in the other.
    `UPSTASH_REDIS_REST_TOKEN` values — these are what `KV_REST_API_URL` /
    `KV_REST_API_TOKEN` below expect (same REST client this app already
    uses for the Vercel deployment, just a different database instance).
-3. In the Render dashboard, under the new service's **Environment**, set:
+3. In the Render dashboard, under the new service's **Environment**, add
+   `KV_REST_API_URL` / `KV_REST_API_TOKEN` (from step 2) and `JWT_SECRET`
+   **as plain variables directly on the service** — not via a linked
+   **Environment Group**. Both look identical in the dashboard and a group
+   can show as "linked" (even with "Link and deploy" selected, not just
+   "Link only") without its variables actually reaching the running
+   process — confirmed the hard way, with a temporary debug endpoint
+   reporting `process.env.KV_REST_API_URL` as empty despite a
+   correctly-configured, correctly-linked group. Plain variables set
+   directly on the service didn't have this problem. If you'd rather use a
+   group anyway (e.g. sharing config across several services), verify it
+   actually worked the same way: temporarily log `!!process.env.KV_REST_API_URL`
+   from a route, hit it, then remove the check — don't just trust the
+   dashboard's "linked" state.
    - `JWT_SECRET` — a real random secret, **different from the one Vercel
      uses** (two independent deployments shouldn't trust each other's
      tokens). Generate one locally: `node -e "console.log(require('crypto').randomBytes(48).toString('base64'))"`

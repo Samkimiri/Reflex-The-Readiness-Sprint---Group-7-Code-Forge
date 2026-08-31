@@ -12,7 +12,12 @@ const { spawn } = require("node:child_process");
 const SERVER_PATH = path.join(__dirname, "..", "server.js");
 const LOCAL_DB_FILE = path.join(__dirname, "..", "data", "db.json");
 
-function runServer(env, { timeoutMs = 4000 } = {}) {
+// A real crash from the fail-fast check happens near-instantly (well under
+// a second locally), but this spawns a genuinely fresh `node` process each
+// time, and CI/dev machines can have enough contention under load to push
+// cold-start latency higher than you'd expect — generous margin here trades
+// a slightly slower failure-case test for not flaking under normal load.
+function runServer(env, { timeoutMs = 8000 } = {}) {
   return new Promise((resolve) => {
     const child = spawn(process.execPath, [SERVER_PATH], { env: { ...process.env, ...env } });
     let stderr = "";
