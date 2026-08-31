@@ -112,6 +112,19 @@ app.use((req, res, next) => {
 // ready". Placed before the seed gate so it can't be blocked by it.
 app.get("/api/health", (req, res) => res.json({ status: "ok", uptime: process.uptime() }));
 
+// TEMPORARY — diagnosing why a fresh Render deployment isn't picking up
+// its linked Upstash env vars. Reports presence only, never the actual
+// secret values. Remove once the real cause is confirmed and fixed.
+app.get("/api/_debug/env-check", (req, res) =>
+  res.json({
+    hasKvUrl: !!process.env.KV_REST_API_URL,
+    hasKvToken: !!process.env.KV_REST_API_TOKEN,
+    kvUrlLength: (process.env.KV_REST_API_URL || "").length,
+    kvInitialized: !!kv,
+    nodeEnv: process.env.NODE_ENV || null,
+  })
+);
+
 // Gate every other request behind seeding once — cheap after the first
 // request, and avoids a cold-start race between seeding and the first API
 // call. A transient blip (e.g. Redis not answering yet right at cold
