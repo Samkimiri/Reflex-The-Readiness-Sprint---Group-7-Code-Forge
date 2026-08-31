@@ -31,7 +31,7 @@ const ADMIN_USER = {
   name: "Site Admin",
   phone: "0700000004",
   email: "admin@reflex.demo",
-  password: process.env.ADMIN_SEED_PASSWORD || "5I9H3ifTmCMj",
+  password: process.env.ADMIN_SEED_PASSWORD || "admin123",
   role: "admin",
 };
 

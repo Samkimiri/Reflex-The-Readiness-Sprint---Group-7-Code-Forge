@@ -369,7 +369,7 @@ test("admin has full oversight: sees every user and every retailer's deliveries"
   // admin accounts can't be created through the public API, only seeded.
   const adminLogin = await api("/api/auth/login", {
     method: "POST",
-    body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "5I9H3ifTmCMj" },
+    body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "admin123" },
   });
   assert.equal(adminLogin.status, 200);
   const adminToken = adminLogin.data.token;
@@ -530,7 +530,7 @@ test("delivery chat: involved parties can read/post, admin is read-only, outside
   ).data;
   const adminLogin = await api("/api/auth/login", {
     method: "POST",
-    body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "5I9H3ifTmCMj" },
+    body: { email: "admin@reflex.demo", password: process.env.ADMIN_SEED_PASSWORD || "admin123" },
   });
 
   const created = await api("/api/deliveries", {

@@ -44,7 +44,7 @@ email/password form:
 
 | Role  | Email               | Password                              |
 |-------|---------------------|----------------------------------------|
-| Admin | admin@reflex.demo   | `5I9H3ifTmCMj` (or `ADMIN_SEED_PASSWORD` if you set one before first boot) |
+| Admin | admin@reflex.demo   | `admin123` (or `ADMIN_SEED_PASSWORD` if you set one before first boot) |
 
 ...plus five example deliveries under the retailer account, one in each
 status (`requested`, `assigned`, `picked_up`, `delivered`, `cancelled`), and
