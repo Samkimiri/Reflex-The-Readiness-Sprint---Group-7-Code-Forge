@@ -185,7 +185,13 @@ router.get("/:id/qrcode.png", async (req, res) => {
   if (!delivery) return res.status(404).end();
   if (!canSeeToken(req.user, delivery)) return res.status(404).end();
   res.setHeader("Content-Type", "image/png");
-  QRCode.toFileStream(res, delivery.qr_code, { width: 300, margin: 1 });
+  // margin is in QR "modules," not pixels — the spec's quiet zone is a
+  // minimum of 4 modules, and this app's main scan path is screen-to-camera
+  // (a rider's camera reading the retailer's phone/monitor), which is far
+  // less forgiving of a cramped quiet zone than a printed code would be.
+  // The previous margin:1 was under spec and was very likely why scans
+  // were failing or needed several attempts.
+  QRCode.toFileStream(res, delivery.qr_code, { width: 320, margin: 4 });
 });
 
 // GET /api/deliveries/:id/messages — per-delivery chat between whoever's

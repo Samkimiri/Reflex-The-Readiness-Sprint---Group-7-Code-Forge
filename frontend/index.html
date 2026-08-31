@@ -16,7 +16,12 @@
 <meta name="apple-mobile-web-app-capable" content="yes" />
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
 <meta name="apple-mobile-web-app-title" content="Reflex" />
-<script src="https://cdnjs.cloudflare.com/ajax/libs/jsQR/1.4.0/jsQR.js"></script>
+<!-- jsQR is no longer published on cdnjs (that path now 404s, which meant
+     window.jsQR was silently undefined and the rider's camera scanner did
+     nothing at all, no matter how good the shot was) — served from jsDelivr
+     instead, which mirrors the npm package directly and is already an
+     allowed script host in the CSP below. -->
+<script src="https://cdn.jsdelivr.net/npm/jsqr@1.4.0/dist/jsQR.js"></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 <!-- Motion (motion.dev) — a small, framework-agnostic animation library
      from the Framer Motion team, chosen specifically because it needs no

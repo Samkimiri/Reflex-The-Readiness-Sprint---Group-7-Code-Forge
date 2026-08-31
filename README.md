@@ -265,10 +265,18 @@ probe which tokens are real.
 
 - As the **retailer**, click "Show QR" on a delivery once it's `picked_up`.
 - As the **rider**, click "Scan to Confirm Delivery" — it opens your camera
-  (via `jsQR`) and reads the code shown on the other screen/device.
-- No camera handy, or scanning a second window on the same laptop? Use the
-  manual entry field in the same modal — copy the token from the retailer's
-  QR endpoint response or just paste it in.
+  (via `jsQR`) and reads the code shown on the other screen/device. Because
+  this app's real-world scan path is screen-to-camera (a rider's phone
+  reading the retailer's phone/monitor) rather than scanning a print, the
+  QR is rendered with a full quiet zone (`margin: 4`, the spec minimum) and
+  the camera stream requests a higher resolution than the browser default —
+  both matter more here than they would for a printed code.
+- No camera handy, or the scan just isn't landing? The same "Show QR" modal
+  the retailer opens also shows a **backup code** — the same token as the
+  QR, as plain text, with a "Copy code" button. Read or send that to the
+  rider, who enters it under "Camera not working?" in their scan modal.
+  That field tolerates how a human actually relays a 32-character code —
+  spaces, dashes, mixed case — rather than requiring an exact paste.
 
 ## Security notes
 
@@ -290,7 +298,7 @@ probe which tokens are real.
   configured (local dev, where there's exactly one instance anyway, so
   in-memory is already exact).
 - **CSP and other security headers** via `helmet`, scoped to exactly what
-  this app loads (jsQR from cdnjs, Google Identity Services, same-origin
+  this app loads (jsQR from jsDelivr, Google Identity Services, same-origin
   fetches, `data:`/`blob:` images for product photos and the QR code).
 - **`JWT_SECRET` must be a real secret in production, and the server
   refuses to start without one.** The hardcoded dev fallback only applies
@@ -432,7 +440,8 @@ probe which tokens are real.
 - A real, provable audit trail (`status_log`) — visible as "History" on any
   delivery
 - Real QR code generation (`qrcode` npm package) and camera-based scanning
-  (`jsQR`), with manual-entry fallback
+  (`jsQR`), with a manual backup-code fallback shown right in the QR modal
+  for when a camera isn't available or won't cooperate
 - Polling refresh every 5s for dispatcher and rider (the Trade-off #1 from
   the trade-off log). Retailer and admin are both excluded from this,
   for different reasons. Retailer: it's a multi-field form, and a poll

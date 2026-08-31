@@ -1966,6 +1966,15 @@ async function openQrModal(id, qrToken) {
     <p style="font-size:13px;color:var(--muted)">Show this to the rider at drop-off. It's what turns "delivered" from a claim into proof.</p>
     <img class="qr-img" width="220" height="220" alt="Delivery QR code" />
     ${canShare ? `<button class="btn btn-secondary qr-share-btn" id="qr-share-btn" type="button" disabled>📤 Share</button>` : ""}
+    ${qrToken ? `
+      <div class="qr-backup">
+        <label class="qr-backup-label">Rider's camera not working? Give them this backup code instead — they can type it in under "Enter the code manually."</label>
+        <div class="qr-backup-row">
+          <code class="qr-backup-code" id="qr-backup-code">${escapeHtml(qrToken)}</code>
+          <button class="btn btn-secondary btn-sm" id="qr-copy-code-btn" type="button">📋 Copy code</button>
+        </div>
+      </div>
+    ` : ""}
     ${qrToken ? `<button class="btn btn-secondary qr-share-btn" id="qr-copy-link-btn" type="button">🔗 Copy tracking link for customer</button>` : ""}
   `);
   modal.querySelector("[data-close]").addEventListener("click", () => closeModal(modal));
@@ -1979,6 +1988,18 @@ async function openQrModal(id, qrToken) {
         toast("Tracking link copied — text it to your customer.");
       } catch (e) {
         toast(url, false); // clipboard blocked (e.g. insecure context) — show the link itself as a fallback
+      }
+    });
+  }
+
+  const copyCodeBtn = modal.querySelector("#qr-copy-code-btn");
+  if (copyCodeBtn) {
+    copyCodeBtn.addEventListener("click", async () => {
+      try {
+        await navigator.clipboard.writeText(qrToken);
+        toast("Backup code copied — share it with the rider.");
+      } catch (e) {
+        toast(qrToken, false); // clipboard blocked — show the code itself as a fallback
       }
     });
   }
@@ -2054,8 +2075,8 @@ function openScanModal(deliveryId, after) {
     <canvas id="scan-canvas" class="hidden"></canvas>
     <p id="scan-status" style="font-size:12px;color:var(--muted);margin-top:8px;">Point the camera at the retailer's QR code.</p>
     <div class="scan-manual">
-      <label style="font-size:12px;font-weight:600;color:var(--muted);">Camera not working? Enter the code manually:</label>
-      <input id="manual-code" placeholder="paste QR token here" />
+      <label style="font-size:12px;font-weight:600;color:var(--muted);">Camera not working? Ask the retailer for the backup code and enter it here:</label>
+      <input id="manual-code" placeholder="e.g. a1b2c3d4e5f6..." autocapitalize="off" autocorrect="off" spellcheck="false" />
       <button class="btn btn-primary btn-sm" id="manual-submit">Confirm Delivery</button>
     </div>
   `);
@@ -2063,7 +2084,10 @@ function openScanModal(deliveryId, after) {
 
   const manualBtn = document.getElementById("manual-submit");
   manualBtn.addEventListener("click", () => {
-    const code = document.getElementById("manual-code").value.trim();
+    // Tolerant of how a human actually relays this code — read aloud over a
+    // call, retyped instead of pasted, copied with surrounding whitespace —
+    // rather than requiring an exact match against the raw token.
+    const code = document.getElementById("manual-code").value.trim().replace(/[\s-]/g, "").toLowerCase();
     if (!code) return;
     withLoading(manualBtn, "Confirming…", () => confirmDelivery(deliveryId, code, modal, after));
   });
@@ -2078,7 +2102,15 @@ async function startScanner(deliveryId, modal, after) {
   const ctx = canvas.getContext("2d");
 
   try {
-    scanStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
+    // Asking for a higher resolution (still just a hint — "ideal", not a
+    // hard requirement, so it degrades gracefully on cameras that can't hit
+    // it) gives jsQR more pixels per QR module to work with, which matters
+    // a lot for this app's actual use case: reading a QR code off another
+    // phone's screen rather than off a print, where framing/glare/focus are
+    // all working against the scanner already.
+    scanStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "environment", width: { ideal: 1280 }, height: { ideal: 720 } },
+    });
     video.srcObject = scanStream;
 
     const tick = () => {

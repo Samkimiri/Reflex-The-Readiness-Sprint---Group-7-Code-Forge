@@ -1060,6 +1060,15 @@ h2 { font-size: 20px; margin: 0 0 4px; }
 .qr-share-btn { display: block; width: 100%; }
 .qr-share-btn:disabled { opacity: 0.6; cursor: default; }
 
+.qr-backup { margin: 14px 0; padding: 12px; background: var(--bg); border: 1px dashed var(--border); border-radius: 8px; }
+.qr-backup-label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 8px; }
+.qr-backup-row { display: flex; align-items: center; gap: 8px; }
+.qr-backup-code {
+  flex: 1; min-width: 0; font-family: "SFMono-Regular", Consolas, monospace; font-size: 13px;
+  letter-spacing: 0.03em; background: var(--white); border: 1px solid var(--border); border-radius: 6px;
+  padding: 8px 10px; overflow-x: auto; white-space: nowrap;
+}
+
 /* ---------- Delivery chat ---------- */
 .chat-messages {
   display: flex;
