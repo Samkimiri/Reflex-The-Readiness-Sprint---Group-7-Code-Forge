@@ -940,7 +940,12 @@ function enterApp() {
   // takes (create/cancel/add product), so it doesn't go stale — it just
   // doesn't yank itself out from under someone mid-form. A manual refresh
   // button covers the rest.
-  if (state.user.role !== "retailer") {
+  // Admin is excluded too, but for a different reason: it's a read-only
+  // overview (users table + every delivery/product across the whole
+  // system) that an admin typically leaves open while doing other things —
+  // a full re-render every 5s is wasted work for a screen nobody's mid-task
+  // on. It gets the same manual refresh button as the retailer view instead.
+  if (state.user.role !== "retailer" && state.user.role !== "admin") {
     // skeleton:false — a skeleton flashing over live data every 5s would
     // be more distracting than the brief blank moment it's meant to fix;
     // it's only useful for the "nothing on screen yet" case below.
@@ -1682,8 +1687,13 @@ async function renderAdmin(root) {
   const byStatus = countBy(deliveries, (d) => d.status);
 
   setViewHTML(root, `
-    <h2>Admin — System Overview</h2>
-    <p class="subtitle">Read-only view across every retailer, rider, and dispatcher — for verifying the prototype is actually working, not day-to-day operations.</p>
+    <div class="view-heading-row">
+      <div><h2>Admin — System Overview</h2>
+      <p class="subtitle">Read-only view across every retailer, rider, and dispatcher — for verifying the prototype is actually working, not day-to-day operations.</p></div>
+      <div class="view-heading-actions">
+        <button class="btn btn-secondary btn-sm" id="admin-refresh" type="button">🔄 Refresh</button>
+      </div>
+    </div>
 
     <div class="panel">
       <h3>At a glance</h3>
@@ -1734,6 +1744,12 @@ async function renderAdmin(root) {
 
   root.querySelectorAll("[data-history]").forEach((btn) => btn.addEventListener("click", () => openHistoryModal(btn.dataset.history)));
   root.querySelectorAll("[data-qr]").forEach((btn) => btn.addEventListener("click", () => openQrModal(btn.dataset.qr, btn.dataset.qrToken)));
+
+  document.getElementById("admin-refresh")?.addEventListener("click", (e) => {
+    withLoading(e.currentTarget, "Refreshing…", async () => {
+      renderAdmin(root);
+    });
+  });
 }
 
 function adminDeliveryCard(d, usersById) {
